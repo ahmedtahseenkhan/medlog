@@ -1,0 +1,65 @@
+{
+  "expo": {
+    "name": "MedLog AI",
+    "slug": "medlog-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "medlog",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.medlog.ai",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Use Face ID to securely re-authenticate",
+        "NSCameraUsageDescription": "Capture lab reports and radiology images",
+        "NSMicrophoneUsageDescription": "Record voice notes for clinical documentation"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1D9E75"
+      },
+      "package": "com.medlog.ai",
+      "permissions": [
+        "USE_FINGERPRINT",
+        "USE_BIOMETRIC",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "POST_NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED",
+        "SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow MedLog to use Face ID"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1D9E75"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "85b48ca1-bdbb-4011-b00d-592d691cd3ff"
+      }
+    }
+  }
+}

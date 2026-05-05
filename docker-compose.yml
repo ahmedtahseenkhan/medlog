@@ -1,0 +1,95 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: medlog-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: medlog
+      POSTGRES_PASSWORD: medlog
+      POSTGRES_DB: medlog
+    ports:
+      - '5435:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U medlog']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: medlog-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # LocalStack — local AWS emulation for S3, Textract, Transcribe in dev
+  localstack:
+    image: localstack/localstack:3
+    container_name: medlog-localstack
+    restart: unless-stopped
+    ports:
+      - '4566:4566'
+    environment:
+      SERVICES: s3,textract,transcribe
+      AWS_DEFAULT_REGION: us-east-1
+      PERSISTENCE: 1
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile.dev
+    container_name: medlog-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://medlog:medlog@postgres:5432/medlog
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev-secret-change-in-production-min-32-chars
+      ENCRYPTION_KEY: dev-encryption-key-change-in-prod-32c
+      NODE_ENV: development
+      PORT: 3001
+      HOST: 0.0.0.0
+      CORS_ORIGIN: http://localhost:5173
+      # AWS — points at LocalStack in dev
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_S3_BUCKET: medlog-uploads-dev
+      AWS_S3_ENDPOINT: http://localstack:4566
+      AWS_TRANSCRIBE_OUTPUT_BUCKET: medlog-transcripts-dev
+      # AI — fill in real keys in .env for actual AI features
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      RADIOLOGY_AI_PROVIDER: ${RADIOLOGY_AI_PROVIDER:-claude}
+      INFERMEDICA_API_KEY: ${INFERMEDICA_API_KEY:-}
+      INFERMEDICA_APP_ID: ${INFERMEDICA_APP_ID:-}
+      # Expo push
+      EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
+    ports:
+      - '3001:3001'
+    volumes:
+      - ./apps/backend/src:/app/src
+      - ./apps/backend/prisma:/app/prisma
+      - /app/node_modules
+
+volumes:
+  postgres_data:
+  redis_data:
+  localstack_data:

@@ -1,0 +1,20 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Strip monorepo-only workspace packages before installing
+RUN npm pkg delete devDependencies['@medlog/eslint-config'] \
+    && npm pkg delete devDependencies['@medlog/tsconfig'] \
+    && npm pkg delete dependencies['@medlog/types'] \
+    && npm install --legacy-peer-deps
+
+COPY . .
+
+RUN npx prisma generate
+
+EXPOSE 3001
+
+CMD ["npm", "run", "dev"]

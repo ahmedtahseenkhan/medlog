@@ -1,0 +1,460 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CONSULTANT
+  RESIDENT
+  INTERN
+  ADMIN
+}
+
+enum PatientStatus {
+  ADMITTED
+  DISCHARGED
+  ARCHIVED
+}
+
+enum NoteType {
+  SOAP
+  FREE_TEXT
+  HANDOVER
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      UserRole @default(INTERN)
+  teamId    String?
+  team      Team?    @relation(fields: [teamId], references: [id])
+  passwordHash       String?
+  totpSecret         String?   // active TOTP secret (encrypted at app layer)
+  totpSecretPending  String?   // unconfirmed secret during setup
+  totpEnabled        Boolean   @default(false)
+  auth0Sub           String?   @unique // Auth0 subject claim, null for local accounts
+  lastLoginAt        DateTime?
+  failedLoginCount   Int       @default(0)
+  lockedUntil        DateTime?
+  emailVerified      Boolean   @default(false)
+  emailVerifyToken   String?   @unique
+  emailVerifyExpiry  DateTime?
+
+  patientsCreated      Patient[]     @relation("PatientCreator")
+  notes                ClinicalNote[]
+  tasksCreated         Task[]        @relation("TaskCreator")
+  tasksAssigned        Task[]        @relation("TaskAssignee")
+  labReports           LabReport[]
+  pushTokens           PushToken[]
+  auditLogs            AuditLog[]
+  consultsFrom         Consult[]        @relation("ConsultFrom")
+  consultsTo           Consult[]        @relation("ConsultTo")
+  consultMessages      ConsultMessage[] @relation("ConsultMessages")
+  notifications        Notification[]
+  appointmentsAsDoctor Appointment[]    @relation("AppointmentDoctor")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([teamId])
+  @@index([auth0Sub])
+}
+
+model Team {
+  id        String       @id @default(cuid())
+  name      String
+  members   User[]
+  patients  Patient[]
+  invites   TeamInvite[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TeamInvite {
+  id          String    @id @default(cuid())
+  email       String
+  teamId      String
+  team        Team      @relation(fields: [teamId], references: [id])
+  invitedById String
+  role        String    @default("RESIDENT")
+  token       String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([email, teamId])
+  @@index([token])
+  @@index([teamId])
+}
+
+model Ward {
+  id        String    @id @default(cuid())
+  name      String
+  code      String    @unique
+  totalBeds Int       @default(0)
+  patients  Patient[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Patient {
+  id                 String        @id @default(cuid())
+  mrNumber           String        @unique
+  status             PatientStatus @default(ADMITTED)
+  wardId             String?
+  ward               Ward?         @relation(fields: [wardId], references: [id])
+  wardName           String?
+  bedNumber          String?
+  admissionDate      DateTime?
+  admissionDiagnosis String?
+  dischargeDate      DateTime?
+  dischargeSummary   String?
+  createdById        String
+  createdBy          User          @relation("PatientCreator", fields: [createdById], references: [id])
+  teamId             String?
+  team               Team?         @relation(fields: [teamId], references: [id])
+
+  notes           ClinicalNote[]
+  tasks           Task[]
+  labReports      LabReport[]
+  medications     MedicationLog[]
+  radiologyImages RadiologyImage[]
+  ddxSessions     DdxSession[]
+  prescriptions   Prescription[]
+  shareLinks      ShareLink[]
+  consults        Consult[]
+  appointments    Appointment[]
+  recallRules     RecallRule[]
+  contactPrefs    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([mrNumber])
+  @@index([status])
+  @@index([wardId])
+  @@index([teamId])
+}
+
+model ClinicalNote {
+  id        String   @id @default(cuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  type      NoteType @default(SOAP)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  content   Json
+  isDraft   Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([authorId])
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  patientId   String
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  title       String
+  description String?
+  status      TaskStatus   @default(PENDING)
+  priority    TaskPriority @default(MEDIUM)
+  assignedToId String?
+  assignedTo  User?        @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  createdById String
+  createdBy   User         @relation("TaskCreator", fields: [createdById], references: [id])
+  dueAt       DateTime?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([assignedToId])
+  @@index([status])
+}
+
+model LabReport {
+  id                  String  @id @default(cuid())
+  patientId           String
+  patient             Patient @relation(fields: [patientId], references: [id])
+  testName            String
+  value               String
+  unit                String
+  referenceRangeLow   Float?
+  referenceRangeHigh  Float?
+  isAbnormal          Boolean @default(false)
+  isCritical          Boolean @default(false)
+  reportedAt          DateTime
+  createdById         String
+  createdBy           User    @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([patientId])
+  @@index([reportedAt])
+}
+
+model MedicationLog {
+  id            String   @id @default(cuid())
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id])
+  drugName      String
+  dose          String
+  route         String
+  frequency     String
+  startDate     DateTime
+  endDate       DateTime?
+  administeredAt DateTime?
+  missedAt      DateTime?
+  isPrn         Boolean  @default(false)
+  createdById   String
+
+  createdAt DateTime @default(now())
+
+  @@index([patientId])
+}
+
+model RadiologyImage {
+  id         String  @id @default(cuid())
+  patientId  String
+  patient    Patient @relation(fields: [patientId], references: [id])
+  s3Key      String
+  s3Bucket   String
+  modality   String  // X-ray, CT, MRI
+  bodyPart   String?
+  metadata   Json?
+  uploadedAt DateTime @default(now())
+  uploadedById String
+
+  @@index([patientId])
+}
+
+model Prescription {
+  id            String    @id @default(cuid())
+  patientId     String
+  patient       Patient   @relation(fields: [patientId], references: [id])
+  prescribedById String
+  drugs         Json      // array of drug objects
+  notes         String?
+  signature     String?   // base64 data URL
+  hash          String    // tamper-evident SHA-256 fragment
+  verifiedAt    DateTime? // set when QR scanned to confirm dispensing
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([patientId])
+  @@index([prescribedById])
+}
+
+model ShareLink {
+  id          String    @id @default(cuid())
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id])
+  createdById String
+  token       String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  purpose     String    @default("referral") // 'referral' | 'telemedicine'
+  createdAt   DateTime  @default(now())
+
+  @@index([token])
+  @@index([patientId])
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  platform  String   // 'expo' | 'web'
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model DdxSession {
+  id              String   @id @default(cuid())
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id])
+  requestedById   String
+  input           Json
+  result          Json
+  modelVersion    String
+  feedback        String?  // 'up' | 'down'
+  feedbackComment String?
+  createdAt       DateTime @default(now())
+
+  @@index([patientId])
+  @@index([createdAt])
+}
+
+model DrugInteraction {
+  id            String   @id @default(cuid())
+  drug1         String
+  drug2         String
+  severity      String   // 'contraindicated' | 'major' | 'moderate' | 'minor'
+  description   String
+  mechanism     String?
+  updatedAt     DateTime @updatedAt
+
+  @@unique([drug1, drug2])
+  @@index([drug1])
+  @@index([drug2])
+}
+
+enum ConsultStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  COMPLETED
+}
+
+enum ConsultUrgency {
+  ROUTINE
+  URGENT
+  EMERGENCY
+}
+
+model Consult {
+  id          String         @id @default(cuid())
+  patientId   String
+  patient     Patient        @relation(fields: [patientId], references: [id])
+  fromUserId  String
+  fromUser    User           @relation("ConsultFrom", fields: [fromUserId], references: [id])
+  toUserId    String
+  toUser      User           @relation("ConsultTo", fields: [toUserId], references: [id])
+  urgency     ConsultUrgency @default(ROUTINE)
+  status      ConsultStatus  @default(PENDING)
+  notes       String?
+  messages    ConsultMessage[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([status])
+}
+
+model ConsultMessage {
+  id        String   @id @default(cuid())
+  consultId String
+  consult   Consult  @relation(fields: [consultId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation("ConsultMessages", fields: [authorId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([consultId])
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  type       String   // 'CRITICAL_LAB' | 'CONSULT_REQUEST' | 'TASK_OVERDUE' | 'HANDOVER_DUE' | 'DIAGNOSIS_ALERT' | 'STAFF_ALERT'
+  title      String
+  body       String
+  patientId  String?
+  resourceId String?
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, read])
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentType {
+  FOLLOW_UP
+  REVIEW
+  PROCEDURE
+  CONSULTATION
+  DISCHARGE_REVIEW
+}
+
+model Appointment {
+  id           String            @id @default(cuid())
+  patientId    String
+  patient      Patient           @relation(fields: [patientId], references: [id])
+  doctorId     String
+  doctor       User              @relation("AppointmentDoctor", fields: [doctorId], references: [id])
+  type         AppointmentType   @default(FOLLOW_UP)
+  status       AppointmentStatus @default(SCHEDULED)
+  scheduledAt  DateTime
+  durationMins Int               @default(15)
+  notes        String?
+  createdById  String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([scheduledAt])
+  @@index([status])
+}
+
+model RecallRule {
+  id              String   @id @default(cuid())
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id])
+  createdById     String
+  intervalDays    Int
+  lastTriggeredAt DateTime?
+  nextDueAt       DateTime
+  diagnosisNote   String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([nextDueAt])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+}
