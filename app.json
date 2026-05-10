@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "85b48ca1-bdbb-4011-b00d-592d691cd3ff"
+      }
+    },
+    "android": {
+      "package": "com.mktahseen.medlogai"
+    }
+  }
+}
