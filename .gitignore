@@ -27,3 +27,5 @@ npm-debug.log*
 
 # Coverage
 coverage/
+.idea/
+app.json
