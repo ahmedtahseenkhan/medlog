@@ -7,7 +7,7 @@ import {
 import { useLocalSearchParams, router } from 'expo-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../../../src/lib/api'
-import type { Patient, Task, ClinicalNote } from '@medlog/types'
+import type { Patient, Task, ClinicalNote } from '../../../src/types'
 import { colors, typography, spacing, radius, shadow } from '../../../src/theme'
 
 // ── Types ─────────────────────────────────────────────────────────────────────

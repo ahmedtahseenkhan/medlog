@@ -7,7 +7,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../../../src/lib/api'
 import { colors, typography, spacing, radius, shadow } from '../../../src/theme'
-import type { Patient } from '@medlog/types'
+import type { Patient } from '../../../src/types'
 
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const
 const PRIORITY_COLORS: Record<string, string> = {

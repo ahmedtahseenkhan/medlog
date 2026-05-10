@@ -6,7 +6,7 @@ import {
 import { router } from 'expo-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../../../src/lib/api'
-import type { Task } from '@medlog/types'
+import type { Task } from '../../../src/types'
 import { colors, typography, spacing, radius, shadow } from '../../../src/theme'
 
 type FilterTab = 'ALL' | 'PENDING' | 'DONE'

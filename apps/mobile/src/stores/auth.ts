@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import * as SecureStore from 'expo-secure-store'
-import type { User } from '@medlog/types'
+import type { User } from '../../src/types'
 
 interface AuthState {
   token: string | null

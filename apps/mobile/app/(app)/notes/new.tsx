@@ -7,7 +7,7 @@ import { useLocalSearchParams, router } from 'expo-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../../../src/lib/api'
 import { colors, typography, spacing, radius, shadow } from '../../../src/theme'
-import type { Patient } from '@medlog/types'
+import type { Patient } from '../../../src/types'
 
 const NOTE_TYPES = ['FREE_TEXT', 'SOAP', 'PROGRESS'] as const
 type NoteType = typeof NOTE_TYPES[number]

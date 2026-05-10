@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../../../src/lib/api'
 import { colors, typography, spacing, radius, shadow } from '../../../src/theme'
-import type { Patient } from '@medlog/types'
+import type { Patient } from '../../../src/types'
 
 const STATUS_OPTIONS = ['ADMITTED', 'DISCHARGED', 'ARCHIVED']
 const CONTACT_CHANNELS = ['sms', 'push', 'email', 'whatsapp'] as const

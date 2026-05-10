@@ -6,7 +6,7 @@ import {
 import { router } from 'expo-router'
 import { useAuthStore } from '../../src/stores/auth'
 import { api } from '../../src/lib/api'
-import type { User } from '@medlog/types'
+import type { User } from '../../src/types'
 import { colors, typography, spacing, radius, shadow } from '../../src/theme'
 
 async function registerForPushNotificationsAsync() {
