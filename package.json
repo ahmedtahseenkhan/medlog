@@ -14,7 +14,8 @@
     "db:generate": "turbo run db:generate",
     "db:migrate": "turbo run db:migrate",
     "db:studio": "cd apps/backend && npx prisma studio",
-    "dev:mobile": "cd apps/mobile && NODE_PATH=./node_modules npx expo start"
+    "dev:mobile": "cd apps/mobile && NODE_PATH=./node_modules npx expo start",
+    "postinstall": "node scripts/link-expo-router.js"
   },
   "devDependencies": {
     "expo": "~54.0.0",

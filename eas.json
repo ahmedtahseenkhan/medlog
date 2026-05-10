@@ -7,20 +7,17 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "projectRootPath": "apps/mobile",
       "android": {
         "buildType": "apk"
       }
     },
     "preview": {
       "distribution": "internal",
-      "projectRootPath": "apps/mobile",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
-      "projectRootPath": "apps/mobile",
       "android": {
         "buildType": "app-bundle"
       }
