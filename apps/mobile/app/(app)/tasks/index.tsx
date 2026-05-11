@@ -48,8 +48,8 @@ export default function TasksScreen() {
   }, [])
 
   async function toggleTask(taskId: string, currentStatus: string) {
+    const task = await database.get<Task>('tasks').find(taskId)
     await database.write(async () => {
-      const task = await database.get<Task>('tasks').find(taskId)
       await task.update((t) => {
         t.status = currentStatus === 'DONE' ? 'PENDING' : 'DONE'
       })
