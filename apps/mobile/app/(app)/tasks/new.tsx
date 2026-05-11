@@ -1,65 +1,88 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
   ScrollView, ActivityIndicator, Alert, Platform, StatusBar,
 } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import api from '../../../src/lib/api'
+import { database } from '../../../src/db/database'
+import type { Patient } from '../../../src/db/models/Patient'
+import type { Task } from '../../../src/db/models/Task'
+import { scheduleTaskReminder } from '../../../src/services/notifications'
 import { colors, typography, spacing, radius, shadow } from '../../../src/theme'
-import type { Patient } from '../../../src/types'
 
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const
 const PRIORITY_COLORS: Record<string, string> = {
-  LOW: colors.gray400,
-  MEDIUM: colors.warning,
-  HIGH: colors.danger,
-  URGENT: '#7C3AED',
+  LOW: colors.gray400, MEDIUM: colors.warning, HIGH: colors.danger, URGENT: '#7C3AED',
 }
 
 export default function NewTaskScreen() {
   const { patientId: preselectedPatientId } = useLocalSearchParams<{ patientId?: string }>()
-  const qc = useQueryClient()
 
   const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<string>('MEDIUM')
   const [selectedPatientId, setSelectedPatientId] = useState(preselectedPatientId ?? '')
-  const [dueAt, setDueAt] = useState('')
+  const [dueAtStr, setDueAtStr] = useState('')
+  const [patients, setPatients] = useState<Patient[]>([])
   const [saving, setSaving] = useState(false)
 
-  const { data: patients } = useQuery({
-    queryKey: ['patients'],
-    initialData: [] as Patient[],
-    queryFn: async () => {
-      const res = await api.get('/patients?page=1&limit=100&status=ADMITTED')
-      return ((res.data.data ?? []) as Patient[])
-    },
-  })
+  useEffect(() => {
+    database.get<Patient>('patients').query().fetch().then(setPatients).catch(() => {})
+  }, [])
+
+  function parseDueDate(): Date | null {
+    if (!dueAtStr.trim()) return null
+    const parts = dueAtStr.trim().split(/[\/\-]/)
+    if (parts.length === 3) {
+      let d: Date
+      if (parts[0].length === 4) {
+        d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 8, 0, 0)
+      } else {
+        d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]), 8, 0, 0)
+      }
+      if (!isNaN(d.getTime())) return d
+    }
+    return null
+  }
 
   async function handleSave() {
     if (!title.trim()) { Alert.alert('Required', 'Task title is required'); return }
     if (!selectedPatientId) { Alert.alert('Required', 'Please select a patient'); return }
+    const dueDate = parseDueDate()
+    if (dueAtStr.trim() && !dueDate) {
+      Alert.alert('Invalid Date', 'Enter date as DD/MM/YYYY or YYYY-MM-DD')
+      return
+    }
+
     setSaving(true)
     try {
-      await api.post('/tasks', {
-        patientId: selectedPatientId,
-        title: title.trim(),
-        description: description.trim() || undefined,
-        priority,
-        dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
+      const patient = patients.find(p => p.id === selectedPatientId)
+      let notifId: string | null = null
+      if (dueDate && patient) {
+        notifId = await scheduleTaskReminder(title.trim(), patient.mrNumber, dueDate)
+      }
+
+      await database.write(async () => {
+        await database.get<Task>('tasks').create((t) => {
+          t.patientId = selectedPatientId
+          t.title = title.trim()
+          t.status = 'PENDING'
+          t.priority = priority
+          t.dueAt = dueDate ? dueDate.getTime() : null
+          t.serverId = null
+          t.syncedAt = null
+          t.localOnly = true
+          t.notificationId = notifId
+        })
       })
-      await qc.invalidateQueries({ queryKey: ['tasks'] })
-      await qc.invalidateQueries({ queryKey: ['tasks', selectedPatientId] })
       router.back()
     } catch (err: any) {
-      Alert.alert('Error', err?.response?.data?.message ?? 'Failed to create task')
+      Alert.alert('Error', err?.message ?? 'Failed to create task')
     } finally {
       setSaving(false)
     }
   }
 
-  const selectedPatient = patients?.find((p) => p.id === selectedPatientId)
+  const selectedPatient = patients.find(p => p.id === selectedPatientId)
 
   return (
     <View style={styles.root}>
@@ -86,18 +109,19 @@ export default function NewTaskScreen() {
               placeholder="e.g. Check morning vitals, Review CBC results"
               placeholderTextColor={colors.gray300}
               returnKeyType="next"
+              autoFocus
             />
           </View>
           <Divider />
           <View style={field.wrap}>
-            <Text style={field.label}>Description (optional)</Text>
+            <Text style={field.label}>Due Date (optional)</Text>
             <TextInput
-              style={[field.input, { minHeight: 60, textAlignVertical: 'top' }]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Additional instructions or context"
+              style={field.input}
+              value={dueAtStr}
+              onChangeText={setDueAtStr}
+              placeholder="DD/MM/YYYY — reminder 1hr before"
               placeholderTextColor={colors.gray300}
-              multiline
+              keyboardType="numbers-and-punctuation"
             />
           </View>
         </View>
@@ -111,9 +135,7 @@ export default function NewTaskScreen() {
               onPress={() => setPriority(p)}
               activeOpacity={0.75}
             >
-              <Text style={[styles.priorityBtnText, priority === p && { color: colors.white }]}>
-                {p}
-              </Text>
+              <Text style={[styles.priorityBtnText, priority === p && { color: colors.white }]}>{p}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -121,8 +143,9 @@ export default function NewTaskScreen() {
         <Text style={styles.sectionLabel}>Patient *</Text>
         {preselectedPatientId && selectedPatient ? (
           <View style={styles.card}>
-            <View style={[field.wrap, { paddingVertical: spacing.md }]}>
-              <Text style={styles.selectedPatientMR}>MR# {selectedPatient.mrNumber}</Text>
+            <View style={field.wrap}>
+              <Text style={styles.selectedPatientName}>{selectedPatient.name ?? `MR# ${selectedPatient.mrNumber}`}</Text>
+              {selectedPatient.name ? <Text style={styles.selectedPatientMR}>MR# {selectedPatient.mrNumber}</Text> : null}
               {selectedPatient.admissionDiagnosis ? (
                 <Text style={styles.selectedPatientDx}>{selectedPatient.admissionDiagnosis}</Text>
               ) : null}
@@ -130,10 +153,10 @@ export default function NewTaskScreen() {
           </View>
         ) : (
           <View style={styles.card}>
-            {(patients ?? []).length === 0 ? (
-              <Text style={styles.noPatients}>No admitted patients found</Text>
+            {patients.length === 0 ? (
+              <Text style={styles.noPatients}>No patients found. Add a patient first.</Text>
             ) : (
-              (patients ?? []).map((p, i) => (
+              patients.map((p, i) => (
                 <View key={p.id}>
                   {i > 0 && <Divider />}
                   <TouchableOpacity
@@ -142,7 +165,8 @@ export default function NewTaskScreen() {
                     activeOpacity={0.75}
                   >
                     <View style={styles.patientRowContent}>
-                      <Text style={styles.patientMR}>MR# {p.mrNumber}</Text>
+                      <Text style={styles.patientName}>{p.name ?? `MR# ${p.mrNumber}`}</Text>
+                      {p.name ? <Text style={styles.patientMR}>MR# {p.mrNumber}</Text> : null}
                       {p.admissionDiagnosis ? (
                         <Text style={styles.patientDx} numberOfLines={1}>{p.admissionDiagnosis}</Text>
                       ) : null}
@@ -182,61 +206,32 @@ const field = StyleSheet.create({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.screenBg },
   header: {
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: Platform.OS === 'ios' ? 56 : 44,
-    paddingBottom: spacing.lg,
-    paddingHorizontal: spacing.xl,
+    backgroundColor: colors.primary, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', paddingTop: Platform.OS === 'ios' ? 56 : 44,
+    paddingBottom: spacing.lg, paddingHorizontal: spacing.xl,
   },
-  backBtn: {
-    width: 40, height: 40, borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center', justifyContent: 'center',
-  },
+  backBtn: { width: 40, height: 40, borderRadius: radius.full, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   backArrow: { fontSize: 20, color: colors.white, fontWeight: '600' },
   headerTitle: { ...typography.h3, color: colors.white },
   body: { padding: spacing.xxl },
   sectionLabel: { ...typography.label, marginBottom: spacing.sm, marginTop: spacing.lg },
-  card: {
-    backgroundColor: colors.white, borderRadius: radius.lg,
-    paddingHorizontal: spacing.lg, ...shadow.sm,
-  },
+  card: { backgroundColor: colors.white, borderRadius: radius.lg, paddingHorizontal: spacing.lg, ...shadow.sm },
   priorityRow: { flexDirection: 'row', gap: spacing.sm },
-  priorityBtn: {
-    flex: 1, borderRadius: radius.full, borderWidth: 1.5,
-    borderColor: colors.gray200, paddingVertical: spacing.sm,
-    alignItems: 'center', backgroundColor: colors.white,
-  },
+  priorityBtn: { flex: 1, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.gray200, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.white },
   priorityBtnText: { fontSize: 11, fontWeight: '700', color: colors.gray500, letterSpacing: 0.3 },
-  patientRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: spacing.md,
-  },
+  patientRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.md },
   patientRowContent: { flex: 1 },
-  patientMR: { fontSize: 15, fontWeight: '700', color: colors.gray900 },
+  patientName: { fontSize: 15, fontWeight: '700', color: colors.gray900 },
+  patientMR: { fontSize: 12, color: colors.gray500, marginTop: 1 },
   patientDx: { fontSize: 13, color: colors.gray500, marginTop: 2 },
-  radio: {
-    width: 22, height: 22, borderRadius: radius.full,
-    borderWidth: 2, borderColor: colors.gray300,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  radio: { width: 22, height: 22, borderRadius: radius.full, borderWidth: 2, borderColor: colors.gray300, alignItems: 'center', justifyContent: 'center' },
   radioSelected: { borderColor: colors.primary },
   radioDot: { width: 10, height: 10, borderRadius: radius.full, backgroundColor: colors.primary },
   noPatients: { ...typography.bodySmall, padding: spacing.lg, textAlign: 'center' },
-  selectedPatientMR: { fontSize: 15, fontWeight: '700', color: colors.gray900 },
+  selectedPatientName: { fontSize: 15, fontWeight: '700', color: colors.gray900 },
+  selectedPatientMR: { fontSize: 12, color: colors.gray500, marginTop: 1 },
   selectedPatientDx: { fontSize: 13, color: colors.gray500, marginTop: 2 },
-  footer: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    padding: spacing.xxl,
-    paddingBottom: Platform.OS === 'ios' ? 36 : spacing.xxl,
-    backgroundColor: colors.screenBg,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.gray200,
-  },
-  saveBtn: {
-    backgroundColor: colors.primary, borderRadius: radius.lg,
-    paddingVertical: 15, alignItems: 'center', ...shadow.md,
-  },
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: spacing.xxl, paddingBottom: Platform.OS === 'ios' ? 36 : spacing.xxl, backgroundColor: colors.screenBg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.gray200 },
+  saveBtn: { backgroundColor: colors.primary, borderRadius: radius.lg, paddingVertical: 15, alignItems: 'center', ...shadow.md },
   saveBtnText: { color: colors.white, fontSize: 16, fontWeight: '700' },
 })
