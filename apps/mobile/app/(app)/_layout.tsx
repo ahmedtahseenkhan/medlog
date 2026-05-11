@@ -137,6 +137,7 @@ export default function AppLayout() {
       <Tabs.Screen name="notes" options={{ href: null }} />
       <Tabs.Screen name="consults" options={{ href: null }} />
       <Tabs.Screen name="pharma" options={{ href: null }} />
+      <Tabs.Screen name="handover" options={{ href: null }} />
     </Tabs>
   )
 }
