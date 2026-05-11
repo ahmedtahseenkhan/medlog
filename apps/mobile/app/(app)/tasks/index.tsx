@@ -47,10 +47,11 @@ export default function TasksScreen() {
     return () => sub.unsubscribe()
   }, [])
 
-  async function toggleTask(task: Task) {
+  async function toggleTask(taskId: string, currentStatus: string) {
     await database.write(async () => {
+      const task = await database.get<Task>('tasks').find(taskId)
       await task.update((t) => {
-        t.status = t.status === 'DONE' ? 'PENDING' : 'DONE'
+        t.status = currentStatus === 'DONE' ? 'PENDING' : 'DONE'
       })
     })
   }
@@ -121,7 +122,7 @@ export default function TasksScreen() {
                       ) : null}
                     </View>
                   </View>
-                  <TouchableOpacity style={[styles.checkCircle, isDone && styles.checkCircleDone]} onPress={() => toggleTask(task)} activeOpacity={0.75}>
+                  <TouchableOpacity style={[styles.checkCircle, isDone && styles.checkCircleDone]} onPress={() => toggleTask(task.id, task.status)} activeOpacity={0.75}>
                     {isDone && <Text style={styles.checkMark}>✓</Text>}
                   </TouchableOpacity>
                 </View>

@@ -53,10 +53,11 @@ export default function PatientDetailScreen() {
     return () => { taskSub.unsubscribe(); labSub.unsubscribe() }
   }, [id])
 
-  async function toggleTask(task: Task) {
+  async function toggleTask(taskId: string, currentStatus: string) {
     await database.write(async () => {
+      const task = await database.get<Task>('tasks').find(taskId)
       await task.update((t) => {
-        t.status = t.status === 'DONE' ? 'PENDING' : 'DONE'
+        t.status = currentStatus === 'DONE' ? 'PENDING' : 'DONE'
       })
     })
   }
@@ -228,7 +229,7 @@ export default function PatientDetailScreen() {
                   <>
                     <Text style={sharedStyles.groupLabel}>PENDING</Text>
                     {tasks.filter(t => t.status !== 'DONE').map(task => (
-                      <TaskRow key={task.id} task={task} onToggle={() => toggleTask(task)} />
+                      <TaskRow key={task.id} task={task} onToggle={() => toggleTask(task.id, task.status)} />
                     ))}
                   </>
                 )}
@@ -236,7 +237,7 @@ export default function PatientDetailScreen() {
                   <>
                     <Text style={[sharedStyles.groupLabel, { marginTop: spacing.lg }]}>COMPLETED</Text>
                     {tasks.filter(t => t.status === 'DONE').map(task => (
-                      <TaskRow key={task.id} task={task} onToggle={() => toggleTask(task)} />
+                      <TaskRow key={task.id} task={task} onToggle={() => toggleTask(task.id, task.status)} />
                     ))}
                   </>
                 )}
