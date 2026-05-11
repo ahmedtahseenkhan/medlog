@@ -8,10 +8,11 @@ import { database } from '../../../src/db/database'
 import type { Patient } from '../../../src/db/models/Patient'
 import type { Task } from '../../../src/db/models/Task'
 import type { LabReport } from '../../../src/db/models/LabReport'
+import type { Vitals } from '../../../src/db/models/Vitals'
 import { Q } from '@nozbe/watermelondb'
 import { colors, typography, spacing, radius, shadow } from '../../../src/theme'
 
-type Tab = 'timeline' | 'tasks' | 'labs'
+type Tab = 'timeline' | 'tasks' | 'labs' | 'vitals'
 
 const PRIORITY_COLOR: Record<string, string> = {
   HIGH: colors.danger, URGENT: '#7C3AED', MEDIUM: colors.warning, LOW: colors.gray400,
@@ -30,6 +31,7 @@ export default function PatientDetailScreen() {
   const [patient, setPatient] = useState<Patient | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
   const [labs, setLabs] = useState<LabReport[]>([])
+  const [vitals, setVitals] = useState<Vitals[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -50,7 +52,11 @@ export default function PatientDetailScreen() {
       .query(Q.where('patient_id', id))
       .observe()
       .subscribe(setLabs)
-    return () => { taskSub.unsubscribe(); labSub.unsubscribe() }
+    const vitalSub = database.get<Vitals>('vitals')
+      .query(Q.where('patient_id', id))
+      .observe()
+      .subscribe(setVitals)
+    return () => { taskSub.unsubscribe(); labSub.unsubscribe(); vitalSub.unsubscribe() }
   }, [id])
 
   async function toggleTask(taskId: string, currentStatus: string) {
@@ -81,6 +87,7 @@ export default function PatientDetailScreen() {
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'timeline', label: 'Timeline' },
+    { key: 'vitals', label: `Vitals${vitals.length > 0 ? ` (${vitals.length})` : ''}` },
     { key: 'tasks', label: `Tasks${tasks.filter(t => t.status !== 'DONE').length > 0 ? ` (${tasks.filter(t => t.status !== 'DONE').length})` : ''}` },
     { key: 'labs', label: `Labs${labs.length > 0 ? ` (${labs.length})` : ''}` },
   ]
@@ -146,6 +153,15 @@ export default function PatientDetailScreen() {
         {patient.phone ? (
           <Text style={styles.phone}>📞 {patient.phone}</Text>
         ) : null}
+
+        {/* Logbook export */}
+        <TouchableOpacity
+          style={styles.logbookBtn}
+          onPress={() => router.push(`/(app)/patients/logbook?patientId=${id}` as any)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.logbookBtnText}>📋 Case Logbook & Export</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Tab Bar */}
@@ -246,6 +262,11 @@ export default function PatientDetailScreen() {
           </View>
         )}
 
+        {/* VITALS */}
+        {activeTab === 'vitals' && (
+          <VitalsTab vitals={vitals} patientId={id!} />
+        )}
+
         {/* LABS */}
         {activeTab === 'labs' && (
           <View>
@@ -298,6 +319,99 @@ export default function PatientDetailScreen() {
     </View>
   )
 }
+
+function VitalsTab({ vitals, patientId }: { vitals: Vitals[]; patientId: string }) {
+  const sorted = [...vitals].sort((a, b) => b.recordedAt - a.recordedAt)
+
+  function trend(key: keyof Vitals, current: Vitals): { arrow: string; color: string } | null {
+    const prev = sorted.find(v => v.id !== current.id && v.recordedAt < current.recordedAt)
+    if (!prev) return null
+    const cur = current[key] as number | null
+    const pre = prev[key] as number | null
+    if (cur == null || pre == null) return null
+    if (cur > pre) return { arrow: '↑', color: colors.danger }
+    if (cur < pre) return { arrow: '↓', color: colors.success }
+    return { arrow: '→', color: colors.gray400 }
+  }
+
+  function isCritVal(key: string, val: number | null): boolean {
+    if (val == null) return false
+    const thresholds: Record<string, { low?: number; high?: number }> = {
+      spo2: { low: 94 }, heartRate: { low: 40, high: 130 },
+      temperature: { low: 35, high: 39.5 }, respiratoryRate: { low: 8, high: 30 },
+      bpSystolic: { low: 90, high: 180 },
+    }
+    const t = thresholds[key]
+    if (!t) return false
+    return (t.low !== undefined && val < t.low) || (t.high !== undefined && val > t.high)
+  }
+
+  function VitalCell({ label, value, unit, trendData, critical }: { label: string; value: number | null; unit: string; trendData: { arrow: string; color: string } | null; critical: boolean }) {
+    if (value == null) return null
+    return (
+      <View style={[vt.cell, critical && vt.cellCritical]}>
+        <Text style={vt.cellLabel}>{label}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3 }}>
+          <Text style={[vt.cellValue, critical && { color: colors.danger }]}>{value}</Text>
+          {trendData && <Text style={[vt.cellTrend, { color: trendData.color }]}>{trendData.arrow}</Text>}
+        </View>
+        <Text style={vt.cellUnit}>{unit}</Text>
+      </View>
+    )
+  }
+
+  return (
+    <View>
+      <TouchableOpacity style={sharedStyles.addBtn} onPress={() => router.push(`/(app)/patients/add-vitals?patientId=${patientId}` as any)} activeOpacity={0.85}>
+        <Text style={sharedStyles.addBtnText}>+ Record Vitals Now</Text>
+      </TouchableOpacity>
+
+      {sorted.length === 0 ? (
+        <EmptyState icon="💓" text="No vitals recorded" sub="Tap above to record BP, HR, Temp, SpO₂" />
+      ) : (
+        sorted.map(v => (
+          <View key={v.id} style={vt.card}>
+            <Text style={vt.time}>{fmt(v.recordedAt)}</Text>
+            <View style={vt.row}>
+              {v.bpSystolic != null && v.bpDiastolic != null && (
+                <View style={[vt.cell, (isCritVal('bpSystolic', v.bpSystolic)) && vt.cellCritical]}>
+                  <Text style={vt.cellLabel}>BP</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3 }}>
+                    <Text style={[vt.cellValue, isCritVal('bpSystolic', v.bpSystolic) && { color: colors.danger }]}>
+                      {v.bpSystolic}/{v.bpDiastolic}
+                    </Text>
+                    {trend('bpSystolic', v) && (
+                      <Text style={[vt.cellTrend, { color: trend('bpSystolic', v)!.color }]}>{trend('bpSystolic', v)!.arrow}</Text>
+                    )}
+                  </View>
+                  <Text style={vt.cellUnit}>mmHg</Text>
+                </View>
+              )}
+              <VitalCell label="HR" value={v.heartRate} unit="bpm" trendData={trend('heartRate', v)} critical={isCritVal('heartRate', v.heartRate)} />
+              <VitalCell label="Temp" value={v.temperature} unit="°C" trendData={trend('temperature', v)} critical={isCritVal('temperature', v.temperature)} />
+              <VitalCell label="SpO₂" value={v.spo2} unit="%" trendData={trend('spo2', v)} critical={isCritVal('spo2', v.spo2)} />
+              <VitalCell label="RR" value={v.respiratoryRate} unit="/min" trendData={trend('respiratoryRate', v)} critical={isCritVal('respiratoryRate', v.respiratoryRate)} />
+            </View>
+            {v.notes ? <Text style={vt.notes}>{v.notes}</Text> : null}
+          </View>
+        ))
+      )}
+    </View>
+  )
+}
+
+const vt = StyleSheet.create({
+  card: { backgroundColor: colors.white, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md, ...shadow.sm },
+  time: { fontSize: 12, color: colors.gray400, fontWeight: '600', marginBottom: spacing.md },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  cell: { minWidth: 72, alignItems: 'center', backgroundColor: colors.gray50, borderRadius: radius.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+  cellCritical: { backgroundColor: colors.dangerLight },
+  cellLabel: { fontSize: 10, fontWeight: '800', color: colors.gray500, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 },
+  cellValue: { fontSize: 18, fontWeight: '800', color: colors.gray900 },
+  cellTrend: { fontSize: 14, fontWeight: '800' },
+  cellUnit: { fontSize: 10, color: colors.gray400, marginTop: 1 },
+  notes: { fontSize: 13, color: colors.gray500, fontStyle: 'italic', marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.gray200 },
+})
 
 function TaskRow({ task, onToggle }: { task: Task; onToggle: () => void }) {
   const color = PRIORITY_COLOR[task.priority] ?? colors.gray400
@@ -403,6 +517,8 @@ const styles = StyleSheet.create({
   infoPill: { flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: radius.md, padding: spacing.sm },
   infoPillLabel: { fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.7)', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 },
   infoPillValue: { fontSize: 13, fontWeight: '700', color: colors.white },
+  logbookBtn: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, alignSelf: 'flex-start', marginTop: spacing.sm },
+  logbookBtnText: { fontSize: 13, fontWeight: '700', color: colors.white },
   followUpBanner: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: radius.md, padding: spacing.sm, marginBottom: spacing.sm },
   followUpText: { fontSize: 13, fontWeight: '700', color: colors.white },
   followUpNotes: { fontSize: 12, color: 'rgba(255,255,255,0.75)', marginTop: 2 },

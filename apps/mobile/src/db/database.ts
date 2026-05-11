@@ -5,6 +5,7 @@ import { Patient } from './models/Patient'
 import { ClinicalNote } from './models/ClinicalNote'
 import { Task } from './models/Task'
 import { LabReport } from './models/LabReport'
+import { Vitals } from './models/Vitals'
 
 const adapter = new SQLiteAdapter({
   schema,
@@ -18,5 +19,5 @@ const adapter = new SQLiteAdapter({
 
 export const database = new Database({
   adapter,
-  modelClasses: [Patient, ClinicalNote, Task, LabReport],
+  modelClasses: [Patient, ClinicalNote, Task, LabReport, Vitals],
 })

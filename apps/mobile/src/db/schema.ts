@@ -1,8 +1,27 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb'
-import { schemaMigrations, addColumns } from '@nozbe/watermelondb/Schema/migrations'
+import { schemaMigrations, addColumns, createTable } from '@nozbe/watermelondb/Schema/migrations'
 
 export const migrations = schemaMigrations({
   migrations: [
+    {
+      toVersion: 3,
+      steps: [
+        createTable({
+          name: 'vitals',
+          columns: [
+            { name: 'patient_id', type: 'string', isIndexed: true },
+            { name: 'bp_systolic', type: 'number', isOptional: true },
+            { name: 'bp_diastolic', type: 'number', isOptional: true },
+            { name: 'heart_rate', type: 'number', isOptional: true },
+            { name: 'temperature', type: 'number', isOptional: true },
+            { name: 'spo2', type: 'number', isOptional: true },
+            { name: 'respiratory_rate', type: 'number', isOptional: true },
+            { name: 'recorded_at', type: 'number' },
+            { name: 'notes', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
     {
       toVersion: 2,
       steps: [
@@ -34,7 +53,7 @@ export const migrations = schemaMigrations({
 })
 
 export const schema = appSchema({
-  version: 2,
+  version: 3,
   tables: [
     tableSchema({
       name: 'patients',
@@ -98,6 +117,20 @@ export const schema = appSchema({
         { name: 'synced_at', type: 'number', isOptional: true },
         { name: 'local_only', type: 'boolean' },
         { name: 'notification_id', type: 'string', isOptional: true },
+      ],
+    }),
+    tableSchema({
+      name: 'vitals',
+      columns: [
+        { name: 'patient_id', type: 'string', isIndexed: true },
+        { name: 'bp_systolic', type: 'number', isOptional: true },
+        { name: 'bp_diastolic', type: 'number', isOptional: true },
+        { name: 'heart_rate', type: 'number', isOptional: true },
+        { name: 'temperature', type: 'number', isOptional: true },
+        { name: 'spo2', type: 'number', isOptional: true },
+        { name: 'respiratory_rate', type: 'number', isOptional: true },
+        { name: 'recorded_at', type: 'number' },
+        { name: 'notes', type: 'string', isOptional: true },
       ],
     }),
   ],

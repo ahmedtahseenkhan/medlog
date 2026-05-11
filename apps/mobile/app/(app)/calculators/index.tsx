@@ -8,6 +8,7 @@ import { colors, typography, spacing, radius, shadow } from '../../../src/theme'
 
 // ─── Calculator definitions ────────────────────────────────────────────────────
 const CALCS = [
+  { id: 'antibiotics', icon: '💊', title: 'Antibiotic Guide', subtitle: '7 systems · Dose & duration' },
   { id: 'crcl',    icon: '🩺', title: 'CrCl',          subtitle: 'Cockcroft-Gault · Drug dosing' },
   { id: 'egfr',    icon: '🫘', title: 'eGFR',           subtitle: 'CKD-EPI · Renal function' },
   { id: 'ca',      icon: '🦴', title: 'Corrected Ca²⁺', subtitle: 'Albumin correction' },
@@ -44,7 +45,12 @@ export default function CalcScreen() {
             <Text style={styles.tip}>Tap any calculator to open it. Results are for clinical guidance only.</Text>
             <View style={styles.grid}>
               {CALCS.map(c => (
-                <TouchableOpacity key={c.id} style={styles.calcCard} onPress={() => setActiveCalc(c.id as CalcId)} activeOpacity={0.8}>
+                <TouchableOpacity
+                  key={c.id}
+                  style={styles.calcCard}
+                  onPress={() => c.id === 'antibiotics' ? router.push('/(app)/calculators/antibiotics' as any) : setActiveCalc(c.id as CalcId)}
+                  activeOpacity={0.8}
+                >
                   <Text style={styles.calcIcon}>{c.icon}</Text>
                   <Text style={styles.calcTitle}>{c.title}</Text>
                   <Text style={styles.calcSub}>{c.subtitle}</Text>
