@@ -235,7 +235,7 @@ export default function DashboardScreen() {
         <View style={styles.quickActions}>
           <QuickAction icon="👤" label="Add Patient" color={colors.primary} onPress={() => router.push('/(app)/patients/new')} />
           <QuickAction icon="🔔" label="Set Alarm" color="#7C3AED" onPress={() => router.push('/(app)/tasks/new')} />
-          <QuickAction icon="🧪" label="Add Lab" color={colors.success} onPress={() => router.push('/(app)/patients')} />
+          <QuickAction icon="🧮" label="Calculators" color={colors.success} onPress={() => router.push('/(app)/calculators' as any)} />
           <QuickAction icon="⇄" label="Handover" color={colors.warning} onPress={() => router.push('/(app)/handover' as any)} />
         </View>
 

@@ -257,6 +257,16 @@ export default function PatientDetailScreen() {
               <EmptyState icon="🧪" text="No lab results yet" sub="Add lab results to track test values and get abnormal alerts" />
             ) : (
               [...labs].sort((a, b) => b.reportedAt - a.reportedAt).map(lab => {
+                // Trend: compare to previous same test
+                const prev = labs
+                  .filter(l => l.testName === lab.testName && l.reportedAt < lab.reportedAt)
+                  .sort((a, b) => b.reportedAt - a.reportedAt)[0]
+                const prevVal = prev ? parseFloat(prev.value) : null
+                const curVal = parseFloat(lab.value)
+                const trendIcon = prevVal === null ? null
+                  : curVal > prevVal ? '↑' : curVal < prevVal ? '↓' : '→'
+                const trendColor = prevVal === null ? null
+                  : curVal > prevVal ? colors.danger : curVal < prevVal ? colors.success : colors.gray400
                 const valueColor = lab.isCritical ? colors.danger : lab.isAbnormal ? colors.warning : colors.gray900
                 return (
                   <View key={lab.id} style={[labStyles.card, lab.isCritical && labStyles.critCard, lab.isAbnormal && !lab.isCritical && labStyles.abnCard]}>
@@ -269,7 +279,10 @@ export default function PatientDetailScreen() {
                         <Text style={labStyles.date}>{fmt(lab.reportedAt)}</Text>
                       </View>
                       <View style={labStyles.valueWrap}>
-                        <Text style={[labStyles.value, { color: valueColor }]}>{lab.value}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+                          <Text style={[labStyles.value, { color: valueColor }]}>{lab.value}</Text>
+                          {trendIcon && <Text style={{ fontSize: 18, fontWeight: '800', color: trendColor ?? colors.gray400 }}>{trendIcon}</Text>}
+                        </View>
                         <Text style={labStyles.unit}>{lab.unit}</Text>
                         {lab.isCritical && <Text style={labStyles.critTag}>CRITICAL</Text>}
                         {lab.isAbnormal && !lab.isCritical && <Text style={labStyles.abnTag}>ABNORMAL</Text>}
