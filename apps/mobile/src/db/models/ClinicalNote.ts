@@ -1,5 +1,5 @@
 import { Model } from '@nozbe/watermelondb'
-import { field, readonly, date } from '@nozbe/watermelondb/decorators'
+import { field } from '@nozbe/watermelondb/decorators'
 
 export class ClinicalNote extends Model {
   static table = 'clinical_notes'
@@ -12,8 +12,6 @@ export class ClinicalNote extends Model {
   @field('server_id') serverId!: string | null
   @field('synced_at') syncedAt!: number | null
   @field('local_only') localOnly!: boolean
-  @readonly @date('created_at') createdAt!: Date
-  @readonly @date('updated_at') updatedAt!: Date
 
   get content() {
     return JSON.parse(this.contentJson)

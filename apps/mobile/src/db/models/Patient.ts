@@ -1,5 +1,5 @@
 import { Model } from '@nozbe/watermelondb'
-import { field, readonly, date } from '@nozbe/watermelondb/decorators'
+import { field } from '@nozbe/watermelondb/decorators'
 
 export class Patient extends Model {
   static table = 'patients'
@@ -18,6 +18,4 @@ export class Patient extends Model {
   @field('follow_up_date') followUpDate!: number | null
   @field('follow_up_notes') followUpNotes!: string | null
   @field('follow_up_notif_id') followUpNotifId!: string | null
-  @readonly @date('created_at') createdAt!: Date
-  @readonly @date('updated_at') updatedAt!: Date
 }

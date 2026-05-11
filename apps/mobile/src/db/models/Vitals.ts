@@ -1,5 +1,5 @@
 import { Model } from '@nozbe/watermelondb'
-import { field, readonly, date } from '@nozbe/watermelondb/decorators'
+import { field } from '@nozbe/watermelondb/decorators'
 
 export class Vitals extends Model {
   static table = 'vitals'
@@ -13,6 +13,4 @@ export class Vitals extends Model {
   @field('respiratory_rate') respiratoryRate!: number | null
   @field('recorded_at') recordedAt!: number
   @field('notes') notes!: string | null
-  @readonly @date('created_at') createdAt!: Date
-  @readonly @date('updated_at') updatedAt!: Date
 }

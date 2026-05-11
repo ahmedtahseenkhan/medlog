@@ -1,5 +1,5 @@
 import { Model } from '@nozbe/watermelondb'
-import { field, readonly, date } from '@nozbe/watermelondb/decorators'
+import { field } from '@nozbe/watermelondb/decorators'
 
 export class LabReport extends Model {
   static table = 'lab_reports'
@@ -17,6 +17,4 @@ export class LabReport extends Model {
   @field('synced_at') syncedAt!: number | null
   @field('local_only') localOnly!: boolean
   @field('notification_id') notificationId!: string | null
-  @readonly @date('created_at') createdAt!: Date
-  @readonly @date('updated_at') updatedAt!: Date
 }

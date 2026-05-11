@@ -1,5 +1,5 @@
 import { Model } from '@nozbe/watermelondb'
-import { field, readonly, date } from '@nozbe/watermelondb/decorators'
+import { field } from '@nozbe/watermelondb/decorators'
 
 export class Task extends Model {
   static table = 'tasks'
@@ -13,6 +13,4 @@ export class Task extends Model {
   @field('synced_at') syncedAt!: number | null
   @field('local_only') localOnly!: boolean
   @field('notification_id') notificationId!: string | null
-  @readonly @date('created_at') createdAt!: Date
-  @readonly @date('updated_at') updatedAt!: Date
 }
