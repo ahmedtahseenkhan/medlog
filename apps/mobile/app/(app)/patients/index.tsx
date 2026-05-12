@@ -7,215 +7,196 @@ import { router } from 'expo-router'
 import { database } from '../../../src/db/database'
 import type { Patient } from '../../../src/db/models/Patient'
 import { colors, typography, spacing, radius, shadow } from '../../../src/theme'
-type StatusFilter = 'ALL' | 'ADMITTED' | 'CRITICAL' | 'DISCHARGED'
 
-const FILTERS: StatusFilter[] = ['ALL', 'ADMITTED', 'CRITICAL', 'DISCHARGED']
+type Filter = 'ALL' | 'ADMITTED' | 'CRITICAL' | 'DISCHARGED'
+const FILTERS: Filter[] = ['ALL', 'ADMITTED', 'CRITICAL', 'DISCHARGED']
 
-const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  ADMITTED: { bg: colors.successLight, text: '#065F46', border: colors.success, label: 'Admitted' },
-  CRITICAL: { bg: colors.dangerLight, text: '#991B1B', border: colors.danger, label: 'Critical' },
-  DISCHARGED: { bg: colors.gray100, text: colors.gray500, border: colors.gray300, label: 'Discharged' },
+const STATUS_LABEL: Record<string, string> = {
+  ADMITTED: 'Admitted', CRITICAL: 'Critical', DISCHARGED: 'Discharged', ARCHIVED: 'Archived',
+}
+const STATUS_COLOR: Record<string, string> = {
+  CRITICAL: colors.critical, ADMITTED: colors.stable, DISCHARGED: colors.textSoft, ARCHIVED: colors.textSoft,
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] ?? { bg: colors.gray100, text: colors.gray500, border: colors.gray300, label: status }
-  return (
-    <View style={[badge.wrap, { backgroundColor: cfg.bg }]}>
-      <Text style={[badge.text, { color: cfg.text }]}>{cfg.label}</Text>
-    </View>
-  )
-}
-
-function FollowUpBadge({ followUpDate }: { followUpDate: number | null }) {
-  if (!followUpDate) return null
-  const date = new Date(followUpDate)
-  const now = new Date()
-  const diffDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-  const isOverdue = diffDays < 0
-  const isToday = diffDays === 0
-  const isSoon = diffDays > 0 && diffDays <= 3
-
-  if (!isOverdue && !isToday && !isSoon) return null
-
-  const label = isOverdue
-    ? `Follow-up overdue (${Math.abs(diffDays)}d ago)`
-    : isToday
-    ? 'Follow-up today'
-    : `Follow-up in ${diffDays}d`
-
-  const bg = isOverdue ? colors.dangerLight : isToday ? colors.warningLight : colors.primaryLight
-  const textColor = isOverdue ? '#991B1B' : isToday ? '#92400E' : colors.primaryDark
-
-  return (
-    <View style={[followUp.wrap, { backgroundColor: bg }]}>
-      <Text style={[followUp.text, { color: textColor }]}>⏰ {label}</Text>
-    </View>
-  )
-}
-
-const badge = StyleSheet.create({
-  wrap: { borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: 3 },
-  text: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
-})
-const followUp = StyleSheet.create({
-  wrap: { borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 2, alignSelf: 'flex-start', marginTop: spacing.xs },
-  text: { fontSize: 11, fontWeight: '600' },
-})
-
-function timeAgo(ts: number | null | undefined): string {
+function timeAgo(ts: number | null): string {
   if (!ts) return ''
-  const diff = Date.now() - ts
-  const hours = Math.floor(diff / 3_600_000)
-  if (hours < 1) return 'Just admitted'
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
+  const h = Math.floor((Date.now() - ts) / 3_600_000)
+  if (h < 1) return '< 1h'
+  if (h < 24) return `${h}h`
+  return `${Math.floor(h / 24)}d`
+}
+
+function followUpBadge(followUpDate: number | null): { label: string; urgent: boolean } | null {
+  if (!followUpDate) return null
+  const days = Math.ceil((followUpDate - Date.now()) / 86_400_000)
+  if (days < 0) return { label: `Overdue ${Math.abs(days)}d`, urgent: true }
+  if (days === 0) return { label: 'Follow-up today', urgent: true }
+  if (days <= 3) return { label: `Follow-up in ${days}d`, urgent: false }
+  return null
 }
 
 export default function PatientsScreen() {
   const [patients, setPatients] = useState<Patient[]>([])
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<StatusFilter>('ALL')
+  const [filter, setFilter] = useState<Filter>('ALL')
 
   useEffect(() => {
-    const subscription = database
-      .get<Patient>('patients')
-      .query()
-      .observe()
-      .subscribe((records) => setPatients(records))
-    return () => subscription.unsubscribe()
+    const sub = database.get<Patient>('patients').query().observe().subscribe(setPatients)
+    return () => sub.unsubscribe()
   }, [])
 
-  const filtered = patients.filter((p) => {
-    const q = search.toLowerCase()
-    const matchSearch =
-      p.mrNumber.toLowerCase().includes(q) ||
-      (p.name ?? '').toLowerCase().includes(q) ||
-      (p.admissionDiagnosis ?? '').toLowerCase().includes(q) ||
-      (p.phone ?? '').includes(q)
-    const matchFilter = filter === 'ALL' || p.status === filter
-    return matchSearch && matchFilter
-  })
+  const filtered = patients
+    .filter(p => {
+      const q = search.toLowerCase()
+      const matchSearch = !q
+        || (p.name ?? '').toLowerCase().includes(q)
+        || p.mrNumber.toLowerCase().includes(q)
+        || (p.admissionDiagnosis ?? '').toLowerCase().includes(q)
+        || (p.phone ?? '').includes(q)
+      const matchFilter = filter === 'ALL' || p.status === filter
+      return matchSearch && matchFilter
+    })
+    .sort((a, b) => {
+      if (a.status === 'CRITICAL' && b.status !== 'CRITICAL') return -1
+      if (b.status === 'CRITICAL' && a.status !== 'CRITICAL') return 1
+      return (b.admissionDate ?? 0) - (a.admissionDate ?? 0)
+    })
 
-  // Sort: CRITICAL first, then by most recent
-  const sorted = [...filtered].sort((a, b) => {
-    if (a.status === 'CRITICAL' && b.status !== 'CRITICAL') return -1
-    if (b.status === 'CRITICAL' && a.status !== 'CRITICAL') return 1
-    return (b.admissionDate ?? 0) - (a.admissionDate ?? 0)
-  })
+  const counts: Record<string, number> = { ALL: patients.length }
+  patients.forEach(p => { counts[p.status] = (counts[p.status] ?? 0) + 1 })
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.screenBg} />
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.ink} />
 
+      {/* ── Header ── */}
       <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+        <View style={styles.headerTop}>
+          <View>
             <Text style={styles.headerTitle}>Patients</Text>
-            {patients.length > 0 && (
-              <View style={styles.countBadge}>
-                <Text style={styles.countBadgeText}>{patients.length}</Text>
-              </View>
-            )}
+            <Text style={styles.headerSub}>
+              {patients.filter(p => p.status !== 'DISCHARGED').length} active
+              {counts['CRITICAL'] ? ` · ${counts['CRITICAL']} critical` : ''}
+            </Text>
           </View>
           <TouchableOpacity
             style={styles.addBtn}
             onPress={() => router.push('/(app)/patients/new')}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
             <Text style={styles.addBtnText}>+ Add</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.searchBar}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by name, MR#, or diagnosis…"
-            placeholderTextColor={colors.gray400}
-            value={search}
-            onChangeText={setSearch}
-            clearButtonMode="while-editing"
-            returnKeyType="search"
-          />
+        {/* Search */}
+        <View style={styles.searchRow}>
+          <View style={styles.searchWrap}>
+            <Text style={styles.searchGlass}>⌕</Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Name, MR number, diagnosis…"
+              placeholderTextColor={colors.textSoft}
+              value={search}
+              onChangeText={setSearch}
+              clearButtonMode="while-editing"
+              returnKeyType="search"
+            />
+          </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-          {FILTERS.map((f) => (
+        {/* Filter tabs */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+          {FILTERS.map(f => (
             <TouchableOpacity
               key={f}
-              style={[styles.filterChip, filter === f && styles.filterChipActive]}
+              style={[styles.filterTab, filter === f && styles.filterTabActive]}
               onPress={() => setFilter(f)}
-              activeOpacity={0.7}
+              activeOpacity={0.75}
             >
-              <Text style={[styles.filterChipText, filter === f && styles.filterChipTextActive]}>
-                {f === 'ALL' ? 'All' : STATUS_CONFIG[f]?.label ?? f}
+              <Text style={[styles.filterTabText, filter === f && styles.filterTabTextActive]}>
+                {f === 'ALL' ? 'All' : STATUS_LABEL[f]}
+                {counts[f] ? ` ${counts[f]}` : ''}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
 
+      {/* ── Patient list ── */}
       <FlatList
-        data={sorted}
-        keyExtractor={(p) => p.id}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => {
-          const cfg = STATUS_CONFIG[item.status] ?? { border: colors.gray300, bg: colors.gray100, text: colors.gray500, label: item.status }
+        data={filtered}
+        keyExtractor={p => p.id}
+        contentContainerStyle={styles.list}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ListHeaderComponent={filtered.length > 0 ? <View style={styles.listHeader}>
+          <Text style={styles.listHeaderText}>PATIENT</Text>
+          <Text style={styles.listHeaderText}>STATUS</Text>
+        </View> : null}
+        renderItem={({ item: p }) => {
+          const isCritical = p.status === 'CRITICAL'
+          const followUp = followUpBadge(p.followUpDate)
+          const statusColor = STATUS_COLOR[p.status] ?? colors.textSoft
+
           return (
             <TouchableOpacity
-              style={styles.card}
-              onPress={() => router.push(`/(app)/patients/${item.id}`)}
-              activeOpacity={0.75}
+              style={[styles.row, isCritical && styles.rowCritical]}
+              onPress={() => router.push(`/(app)/patients/${p.id}` as any)}
+              activeOpacity={0.7}
             >
-              <View style={[styles.cardAccent, { backgroundColor: cfg.border }]} />
-              <View style={styles.cardBody}>
-                <View style={styles.cardTopRow}>
+              {/* Critical indicator stripe */}
+              <View style={[styles.stripe, { backgroundColor: isCritical ? colors.critical : p.status === 'ADMITTED' ? colors.stable : 'transparent' }]} />
+
+              <View style={styles.rowMain}>
+                <View style={styles.rowTop}>
+                  {/* Name + MR */}
                   <View style={{ flex: 1 }}>
-                    {item.name ? (
-                      <Text style={styles.patientName} numberOfLines={1}>{item.name}</Text>
-                    ) : null}
-                    <Text style={styles.mrNumber}>MR# {item.mrNumber}</Text>
+                    <Text style={[styles.patientName, isCritical && { color: colors.critical }]} numberOfLines={1}>
+                      {p.name ?? `Patient`}
+                    </Text>
+                    <Text style={styles.patientMR}>
+                      MR# {p.mrNumber}
+                      {p.wardId ? `  ·  Ward ${p.wardId}` : ''}
+                      {p.bedNumber ? `  Bed ${p.bedNumber}` : ''}
+                    </Text>
                   </View>
-                  <StatusBadge status={item.status} />
+
+                  {/* Status + time */}
+                  <View style={styles.rowRight}>
+                    <Text style={[styles.statusText, { color: statusColor }]}>
+                      {isCritical ? '⚑ ' : ''}{STATUS_LABEL[p.status] ?? p.status}
+                    </Text>
+                    {p.admissionDate ? (
+                      <Text style={styles.timeAgo}>{timeAgo(p.admissionDate)}</Text>
+                    ) : null}
+                  </View>
                 </View>
 
-                {item.admissionDiagnosis ? (
-                  <Text style={styles.diagnosis} numberOfLines={2}>
-                    {item.admissionDiagnosis}
-                  </Text>
+                {/* Diagnosis */}
+                {p.admissionDiagnosis ? (
+                  <Text style={styles.diagnosis} numberOfLines={1}>{p.admissionDiagnosis}</Text>
                 ) : null}
 
-                <FollowUpBadge followUpDate={item.followUpDate} />
-
-                <View style={styles.cardFooter}>
-                  {item.wardId || item.bedNumber ? (
-                    <View style={styles.wardChip}>
-                      <Text style={styles.wardChipText}>
-                        {[item.wardId ? `Ward ${item.wardId}` : null, item.bedNumber ? `Bed ${item.bedNumber}` : null]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {item.admissionDate ? (
-                    <Text style={styles.timeAgo}>{timeAgo(item.admissionDate)}</Text>
-                  ) : null}
-                </View>
+                {/* Follow-up badge */}
+                {followUp && (
+                  <View style={[styles.followUpChip, followUp.urgent && styles.followUpChipUrgent]}>
+                    <Text style={[styles.followUpText, followUp.urgent && styles.followUpTextUrgent]}>
+                      {followUp.label}
+                    </Text>
+                  </View>
+                )}
               </View>
+
+              <Text style={styles.rowChevron}>›</Text>
             </TouchableOpacity>
           )
         }}
         ListEmptyComponent={
-          <View style={styles.emptyWrap}>
-            <Text style={styles.emptyIcon}>🩺</Text>
+          <View style={styles.empty}>
             <Text style={styles.emptyTitle}>
-              {search || filter !== 'ALL' ? 'No patients match' : 'No patients yet'}
+              {search || filter !== 'ALL' ? 'No matches' : 'No patients'}
             </Text>
-            <Text style={styles.emptySubtext}>
-              {search || filter !== 'ALL'
-                ? 'Try a different search or filter'
-                : 'Tap + Add to register your first patient'}
+            <Text style={styles.emptyBody}>
+              {search ? 'Try a different search term' : filter !== 'ALL' ? 'No patients with this status' : 'Tap + Add to register your first patient'}
             </Text>
           </View>
         }
@@ -225,93 +206,123 @@ export default function PatientsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.screenBg },
+  root: { flex: 1, backgroundColor: colors.bg },
+
+  // ── Header ──
   header: {
-    backgroundColor: colors.screenBg,
-    paddingTop: Platform.OS === 'ios' ? 56 : 40,
+    backgroundColor: colors.ink,
+    paddingTop: Platform.OS === 'ios' ? 56 : 36,
     paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray200,
   },
-  headerRow: {
+  headerTop: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.xxl,
     marginBottom: spacing.lg,
-    gap: spacing.md,
   },
-  headerTitle: { ...typography.h1 },
-  countBadge: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    marginTop: 2,
-  },
-  countBadgeText: { fontSize: 13, fontWeight: '700', color: colors.white },
+  headerTitle: { fontSize: 26, fontWeight: '700', color: colors.white, letterSpacing: -0.5 },
+  headerSub: { fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 3, fontVariant: ['tabular-nums'] as any },
   addBtn: {
-    marginLeft: 'auto',
     backgroundColor: colors.primary,
-    borderRadius: radius.full,
+    borderRadius: radius.sm,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+    marginTop: 4,
   },
   addBtnText: { fontSize: 13, fontWeight: '700', color: colors.white },
 
-  searchBar: {
+  searchRow: { paddingHorizontal: spacing.xxl, marginBottom: spacing.md },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    height: 40,
+  },
+  searchGlass: { fontSize: 18, color: 'rgba(255,255,255,0.4)', marginRight: spacing.sm },
+  searchInput: { flex: 1, fontSize: 14, color: colors.white },
+
+  filterRow: { paddingHorizontal: spacing.xl, gap: spacing.xs, paddingBottom: spacing.sm },
+  filterTab: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  filterTabActive: { backgroundColor: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.4)' },
+  filterTabText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.5)', letterSpacing: 0.2 },
+  filterTabTextActive: { color: colors.white },
+
+  // ── List ──
+  list: { paddingBottom: 40 },
+  listHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.bg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.line,
+  },
+  listHeaderText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textSoft,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.line, marginLeft: spacing.xxl + 4 },
+
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.white,
-    marginHorizontal: spacing.xxl,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.lg,
-    height: 44,
-    marginBottom: spacing.md,
-    ...shadow.sm,
+    paddingVertical: spacing.md,
+    paddingRight: spacing.lg,
   },
-  searchIcon: { fontSize: 16, marginRight: spacing.sm },
-  searchInput: { flex: 1, fontSize: 15, color: colors.gray900 },
+  rowCritical: { backgroundColor: '#FFFAFA' },
+  stripe: { width: 3, alignSelf: 'stretch', marginRight: spacing.md, marginLeft: spacing.xl },
 
-  filterScroll: { paddingHorizontal: spacing.xxl, gap: spacing.sm },
-  filterChip: {
-    backgroundColor: colors.white,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.gray200,
+  rowMain: { flex: 1 },
+  rowTop: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.xs },
+  patientName: { fontSize: 15, fontWeight: '700', color: colors.text, letterSpacing: -0.2 },
+  patientMR: {
+    fontSize: 12,
+    color: colors.textSoft,
+    fontVariant: ['tabular-nums'] as any,
+    marginTop: 2,
+    fontWeight: '500',
   },
-  filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterChipText: { fontSize: 13, fontWeight: '600', color: colors.gray500 },
-  filterChipTextActive: { color: colors.white },
+  diagnosis: { fontSize: 13, color: colors.textMid, marginTop: 2, fontStyle: 'italic' },
 
-  listContent: { paddingHorizontal: spacing.xxl, paddingTop: spacing.lg, paddingBottom: 32 },
-  card: {
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    marginBottom: spacing.md,
-    flexDirection: 'row',
-    overflow: 'hidden',
-    ...shadow.sm,
+  rowRight: { alignItems: 'flex-end', marginLeft: spacing.md, flexShrink: 0 },
+  statusText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
+  timeAgo: {
+    fontSize: 11,
+    color: colors.textSoft,
+    fontVariant: ['tabular-nums'] as any,
+    marginTop: 2,
   },
-  cardAccent: { width: 4 },
-  cardBody: { flex: 1, padding: spacing.lg },
-  cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.sm, gap: spacing.sm },
-  patientName: { fontSize: 15, fontWeight: '700', color: colors.gray900, marginBottom: 2 },
-  mrNumber: { fontSize: 13, fontWeight: '500', color: colors.gray500, fontVariant: ['tabular-nums'] },
-  diagnosis: { ...typography.body, lineHeight: 20, marginBottom: spacing.xs, fontSize: 14 },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.sm },
-  wardChip: {
-    backgroundColor: colors.gray100,
-    borderRadius: radius.sm,
+
+  followUpChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.lineLight,
+    borderRadius: radius.xs,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    paddingVertical: 2,
+    marginTop: spacing.xs,
   },
-  wardChipText: { fontSize: 12, fontWeight: '600', color: colors.gray500 },
-  timeAgo: { fontSize: 12, color: colors.gray400 },
+  followUpChipUrgent: { backgroundColor: colors.abnormalBg, borderWidth: 1, borderColor: colors.abnormalBorder },
+  followUpText: { fontSize: 11, fontWeight: '600', color: colors.textSoft },
+  followUpTextUrgent: { color: colors.abnormal },
 
-  emptyWrap: { alignItems: 'center', paddingTop: 80 },
-  emptyIcon: { fontSize: 40, marginBottom: spacing.lg, opacity: 0.35 },
-  emptyTitle: { ...typography.h4, marginBottom: spacing.sm },
-  emptySubtext: { ...typography.bodySmall, textAlign: 'center' },
+  rowChevron: { fontSize: 20, color: colors.line, marginLeft: spacing.sm },
+
+  // ── Empty ──
+  empty: { alignItems: 'center', paddingTop: 80, paddingHorizontal: spacing.xxxl },
+  emptyTitle: { ...typography.h4, color: colors.textMid, marginBottom: spacing.sm },
+  emptyBody: { ...typography.bodySmall, textAlign: 'center', lineHeight: 20 },
 })
