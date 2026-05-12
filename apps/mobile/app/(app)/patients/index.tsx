@@ -6,16 +6,16 @@ import {
 import { router } from 'expo-router'
 import { database } from '../../../src/db/database'
 import type { Patient } from '../../../src/db/models/Patient'
-import { colors, typography, spacing, radius, shadow } from '../../../src/theme'
+import { colors, spacing, radius, shadow } from '../../../src/theme'
 
 type Filter = 'ALL' | 'ADMITTED' | 'CRITICAL' | 'DISCHARGED'
 const FILTERS: Filter[] = ['ALL', 'ADMITTED', 'CRITICAL', 'DISCHARGED']
 
-const STATUS_LABEL: Record<string, string> = {
-  ADMITTED: 'Admitted', CRITICAL: 'Critical', DISCHARGED: 'Discharged', ARCHIVED: 'Archived',
-}
-const STATUS_COLOR: Record<string, string> = {
-  CRITICAL: colors.critical, ADMITTED: colors.stable, DISCHARGED: colors.textSoft, ARCHIVED: colors.textSoft,
+const STATUS_CFG: Record<string, { label: string; dot: string; text: string; bg: string }> = {
+  ADMITTED:   { label: 'Admitted',   dot: colors.success,  text: colors.success,  bg: colors.successLight },
+  CRITICAL:   { label: 'Critical',   dot: colors.critical, text: colors.critical, bg: colors.criticalBg },
+  DISCHARGED: { label: 'Discharged', dot: colors.textSoft,  text: colors.textSoft,  bg: colors.lineLight },
+  ARCHIVED:   { label: 'Archived',   dot: colors.textSoft,  text: colors.textSoft,  bg: colors.lineLight },
 }
 
 function timeAgo(ts: number | null): string {
@@ -24,15 +24,6 @@ function timeAgo(ts: number | null): string {
   if (h < 1) return '< 1h'
   if (h < 24) return `${h}h`
   return `${Math.floor(h / 24)}d`
-}
-
-function followUpBadge(followUpDate: number | null): { label: string; urgent: boolean } | null {
-  if (!followUpDate) return null
-  const days = Math.ceil((followUpDate - Date.now()) / 86_400_000)
-  if (days < 0) return { label: `Overdue ${Math.abs(days)}d`, urgent: true }
-  if (days === 0) return { label: 'Follow-up today', urgent: true }
-  if (days <= 3) return { label: `Follow-up in ${days}d`, urgent: false }
-  return null
 }
 
 export default function PatientsScreen() {
@@ -45,159 +36,169 @@ export default function PatientsScreen() {
     return () => sub.unsubscribe()
   }, [])
 
-  const filtered = patients
-    .filter(p => {
-      const q = search.toLowerCase()
-      const matchSearch = !q
-        || (p.name ?? '').toLowerCase().includes(q)
-        || p.mrNumber.toLowerCase().includes(q)
-        || (p.admissionDiagnosis ?? '').toLowerCase().includes(q)
-        || (p.phone ?? '').includes(q)
-      const matchFilter = filter === 'ALL' || p.status === filter
-      return matchSearch && matchFilter
-    })
-    .sort((a, b) => {
-      if (a.status === 'CRITICAL' && b.status !== 'CRITICAL') return -1
-      if (b.status === 'CRITICAL' && a.status !== 'CRITICAL') return 1
-      return (b.admissionDate ?? 0) - (a.admissionDate ?? 0)
-    })
+  const sorted = [...patients].sort((a, b) => {
+    if (a.status === 'CRITICAL' && b.status !== 'CRITICAL') return -1
+    if (b.status === 'CRITICAL' && a.status !== 'CRITICAL') return 1
+    return (b.admissionDate ?? 0) - (a.admissionDate ?? 0)
+  })
+
+  const filtered = sorted.filter(p => {
+    const q = search.toLowerCase()
+    const matchSearch = !q
+      || (p.name ?? '').toLowerCase().includes(q)
+      || p.mrNumber.toLowerCase().includes(q)
+      || (p.admissionDiagnosis ?? '').toLowerCase().includes(q)
+    const matchFilter = filter === 'ALL' || p.status === filter
+    return matchSearch && matchFilter
+  })
 
   const counts: Record<string, number> = { ALL: patients.length }
   patients.forEach(p => { counts[p.status] = (counts[p.status] ?? 0) + 1 })
 
-  return (
-    <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.ink} />
+  const criticalCount = counts['CRITICAL'] ?? 0
 
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
+  return (
+    <View style={s.root}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+
+      {/* ── Teal header ── */}
+      <View style={s.header}>
+        <View style={s.headerTop}>
           <View>
-            <Text style={styles.headerTitle}>Patients</Text>
-            <Text style={styles.headerSub}>
+            <Text style={s.title}>My Patients</Text>
+            <Text style={s.subtitle}>
               {patients.filter(p => p.status !== 'DISCHARGED').length} active
-              {counts['CRITICAL'] ? ` · ${counts['CRITICAL']} critical` : ''}
+              {criticalCount > 0 ? <Text style={s.criticalNote}>  ·  {criticalCount} critical</Text> : null}
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={() => router.push('/(app)/patients/new')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.addBtnText}>+ Add</Text>
+          <TouchableOpacity style={s.addBtn} onPress={() => router.push('/(app)/patients/new')} activeOpacity={0.85}>
+            <Text style={s.addBtnText}>+ Add</Text>
           </TouchableOpacity>
         </View>
 
         {/* Search */}
-        <View style={styles.searchRow}>
-          <View style={styles.searchWrap}>
-            <Text style={styles.searchGlass}>⌕</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Name, MR number, diagnosis…"
-              placeholderTextColor={colors.textSoft}
-              value={search}
-              onChangeText={setSearch}
-              clearButtonMode="while-editing"
-              returnKeyType="search"
-            />
-          </View>
+        <View style={s.searchBar}>
+          <Text style={s.searchIcon}>⌕</Text>
+          <TextInput
+            style={s.searchInput}
+            placeholder="Name, MR#, or diagnosis…"
+            placeholderTextColor="rgba(255,255,255,0.5)"
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 16 }}>✕</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Filter tabs */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+        {/* Filter pills */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
           {FILTERS.map(f => (
             <TouchableOpacity
               key={f}
-              style={[styles.filterTab, filter === f && styles.filterTabActive]}
+              style={[s.pill, filter === f && s.pillActive]}
               onPress={() => setFilter(f)}
               activeOpacity={0.75}
             >
-              <Text style={[styles.filterTabText, filter === f && styles.filterTabTextActive]}>
-                {f === 'ALL' ? 'All' : STATUS_LABEL[f]}
-                {counts[f] ? ` ${counts[f]}` : ''}
+              <Text style={[s.pillText, filter === f && s.pillTextActive]}>
+                {f === 'ALL' ? 'All' : STATUS_CFG[f]?.label ?? f}
+                {counts[f] != null ? `  ${counts[f]}` : ''}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
 
-      {/* ── Patient list ── */}
+      {/* ── List ── */}
       <FlatList
         data={filtered}
         keyExtractor={p => p.id}
-        contentContainerStyle={styles.list}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListHeaderComponent={filtered.length > 0 ? <View style={styles.listHeader}>
-          <Text style={styles.listHeaderText}>PATIENT</Text>
-          <Text style={styles.listHeaderText}>STATUS</Text>
-        </View> : null}
+        contentContainerStyle={s.listContent}
         renderItem={({ item: p }) => {
+          const cfg = STATUS_CFG[p.status] ?? STATUS_CFG.ADMITTED
           const isCritical = p.status === 'CRITICAL'
-          const followUp = followUpBadge(p.followUpDate)
-          const statusColor = STATUS_COLOR[p.status] ?? colors.textSoft
+
+          // Follow-up badge
+          let followUp: { text: string; urgent: boolean } | null = null
+          if (p.followUpDate) {
+            const days = Math.ceil((p.followUpDate - Date.now()) / 86_400_000)
+            if (days < 0) followUp = { text: `Follow-up ${Math.abs(days)}d overdue`, urgent: true }
+            else if (days === 0) followUp = { text: 'Follow-up today', urgent: true }
+            else if (days <= 3) followUp = { text: `Follow-up in ${days}d`, urgent: false }
+          }
 
           return (
             <TouchableOpacity
-              style={[styles.row, isCritical && styles.rowCritical]}
+              style={[s.card, isCritical && s.cardCritical]}
               onPress={() => router.push(`/(app)/patients/${p.id}` as any)}
-              activeOpacity={0.7}
+              activeOpacity={0.8}
             >
-              {/* Critical indicator stripe */}
-              <View style={[styles.stripe, { backgroundColor: isCritical ? colors.critical : p.status === 'ADMITTED' ? colors.stable : 'transparent' }]} />
+              {/* Left accent */}
+              <View style={[s.accent, { backgroundColor: cfg.dot }]} />
 
-              <View style={styles.rowMain}>
-                <View style={styles.rowTop}>
-                  {/* Name + MR */}
+              <View style={s.cardBody}>
+                {/* Top row */}
+                <View style={s.cardTopRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.patientName, isCritical && { color: colors.critical }]} numberOfLines={1}>
-                      {p.name ?? `Patient`}
+                    <Text style={s.patientName} numberOfLines={1}>
+                      {p.name ?? 'Unknown Patient'}
                     </Text>
-                    <Text style={styles.patientMR}>
+                    <Text style={s.patientMR}>
                       MR# {p.mrNumber}
                       {p.wardId ? `  ·  Ward ${p.wardId}` : ''}
                       {p.bedNumber ? `  Bed ${p.bedNumber}` : ''}
                     </Text>
                   </View>
 
-                  {/* Status + time */}
-                  <View style={styles.rowRight}>
-                    <Text style={[styles.statusText, { color: statusColor }]}>
-                      {isCritical ? '⚑ ' : ''}{STATUS_LABEL[p.status] ?? p.status}
-                    </Text>
-                    {p.admissionDate ? (
-                      <Text style={styles.timeAgo}>{timeAgo(p.admissionDate)}</Text>
-                    ) : null}
+                  {/* Status badge */}
+                  <View style={[s.statusBadge, { backgroundColor: cfg.bg }]}>
+                    <View style={[s.statusDot, { backgroundColor: cfg.dot }]} />
+                    <Text style={[s.statusText, { color: cfg.text }]}>{cfg.label}</Text>
                   </View>
                 </View>
 
                 {/* Diagnosis */}
                 {p.admissionDiagnosis ? (
-                  <Text style={styles.diagnosis} numberOfLines={1}>{p.admissionDiagnosis}</Text>
+                  <Text style={s.diagnosis} numberOfLines={1}>{p.admissionDiagnosis}</Text>
                 ) : null}
 
-                {/* Follow-up badge */}
-                {followUp && (
-                  <View style={[styles.followUpChip, followUp.urgent && styles.followUpChipUrgent]}>
-                    <Text style={[styles.followUpText, followUp.urgent && styles.followUpTextUrgent]}>
-                      {followUp.label}
-                    </Text>
-                  </View>
-                )}
-              </View>
+                {/* Footer */}
+                <View style={s.cardFooter}>
+                  {followUp ? (
+                    <View style={[s.followUpBadge, followUp.urgent && s.followUpBadgeUrgent]}>
+                      <Text style={[s.followUpText, followUp.urgent && s.followUpTextUrgent]}>
+                        {followUp.text}
+                      </Text>
+                    </View>
+                  ) : <View />}
 
-              <Text style={styles.rowChevron}>›</Text>
+                  {p.admissionDate ? (
+                    <Text style={s.timeAgo}>{timeAgo(p.admissionDate)} ago</Text>
+                  ) : null}
+                </View>
+              </View>
             </TouchableOpacity>
           )
         }}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>
-              {search || filter !== 'ALL' ? 'No matches' : 'No patients'}
+          <View style={s.empty}>
+            <View style={s.emptyIcon}>
+              <Text style={{ fontSize: 28 }}>🩺</Text>
+            </View>
+            <Text style={s.emptyTitle}>
+              {search || filter !== 'ALL' ? 'No matches found' : 'No patients yet'}
             </Text>
-            <Text style={styles.emptyBody}>
-              {search ? 'Try a different search term' : filter !== 'ALL' ? 'No patients with this status' : 'Tap + Add to register your first patient'}
+            <Text style={s.emptyBody}>
+              {search ? 'Try a different search' : filter !== 'ALL' ? 'No patients with this status' : 'Tap + Add to register your first patient'}
             </Text>
+            {!search && filter === 'ALL' && (
+              <TouchableOpacity style={s.emptyAction} onPress={() => router.push('/(app)/patients/new')} activeOpacity={0.85}>
+                <Text style={s.emptyActionText}>Add first patient</Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
       />
@@ -205,12 +206,12 @@ export default function PatientsScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
 
-  // ── Header ──
+  // Header
   header: {
-    backgroundColor: colors.ink,
+    backgroundColor: colors.primary,
     paddingTop: Platform.OS === 'ios' ? 56 : 36,
     paddingBottom: spacing.md,
   },
@@ -221,108 +222,106 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     marginBottom: spacing.lg,
   },
-  headerTitle: { fontSize: 26, fontWeight: '700', color: colors.white, letterSpacing: -0.5 },
-  headerSub: { fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 3, fontVariant: ['tabular-nums'] as any },
+  title: { fontSize: 26, fontWeight: '800', color: colors.white, letterSpacing: -0.5 },
+  subtitle: { fontSize: 13, color: 'rgba(255,255,255,0.65)', marginTop: 3 },
+  criticalNote: { color: '#FCA5A5', fontWeight: '700' },
   addBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     borderRadius: radius.sm,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
     marginTop: 4,
   },
   addBtnText: { fontSize: 13, fontWeight: '700', color: colors.white },
 
-  searchRow: { paddingHorizontal: spacing.xxl, marginBottom: spacing.md },
-  searchWrap: {
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    height: 40,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginHorizontal: spacing.xxl,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    height: 44,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
-  searchGlass: { fontSize: 18, color: 'rgba(255,255,255,0.4)', marginRight: spacing.sm },
-  searchInput: { flex: 1, fontSize: 14, color: colors.white },
+  searchIcon: { fontSize: 18, color: 'rgba(255,255,255,0.5)' },
+  searchInput: { flex: 1, fontSize: 15, color: colors.white },
 
-  filterRow: { paddingHorizontal: spacing.xl, gap: spacing.xs, paddingBottom: spacing.sm },
-  filterTab: {
+  filterRow: { paddingHorizontal: spacing.xl, gap: spacing.sm, paddingBottom: spacing.sm },
+  pill: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
-  filterTabActive: { backgroundColor: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.4)' },
-  filterTabText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.5)', letterSpacing: 0.2 },
-  filterTabTextActive: { color: colors.white },
+  pillActive: { backgroundColor: colors.white, borderColor: colors.white },
+  pillText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.65)' },
+  pillTextActive: { color: colors.primary, fontWeight: '700' },
 
-  // ── List ──
-  list: { paddingBottom: 40 },
-  listHeader: {
+  // Cards
+  listContent: { padding: spacing.lg, paddingBottom: 32 },
+  card: {
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    marginBottom: spacing.md,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.bg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.line,
+    overflow: 'hidden',
+    ...shadow.md,
   },
-  listHeaderText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.textSoft,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+  cardCritical: { borderWidth: 1.5, borderColor: colors.criticalBorder },
+  accent: { width: 4, borderRadius: 0 },
+  cardBody: { flex: 1, padding: spacing.lg },
+  cardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.line, marginLeft: spacing.xxl + 4 },
+  patientName: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 3, letterSpacing: -0.2 },
+  patientMR: { fontSize: 12, color: colors.textSoft, fontVariant: ['tabular-nums'] as any, fontWeight: '500' },
 
-  row: {
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
-    paddingVertical: spacing.md,
-    paddingRight: spacing.lg,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    gap: spacing.xs,
+    flexShrink: 0,
   },
-  rowCritical: { backgroundColor: '#FFFAFA' },
-  stripe: { width: 3, alignSelf: 'stretch', marginRight: spacing.md, marginLeft: spacing.xl },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
 
-  rowMain: { flex: 1 },
-  rowTop: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.xs },
-  patientName: { fontSize: 15, fontWeight: '700', color: colors.text, letterSpacing: -0.2 },
-  patientMR: {
-    fontSize: 12,
-    color: colors.textSoft,
-    fontVariant: ['tabular-nums'] as any,
-    marginTop: 2,
-    fontWeight: '500',
-  },
-  diagnosis: { fontSize: 13, color: colors.textMid, marginTop: 2, fontStyle: 'italic' },
+  diagnosis: { fontSize: 13, color: colors.textMid, marginBottom: spacing.sm },
 
-  rowRight: { alignItems: 'flex-end', marginLeft: spacing.md, flexShrink: 0 },
-  statusText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
-  timeAgo: {
-    fontSize: 11,
-    color: colors.textSoft,
-    fontVariant: ['tabular-nums'] as any,
-    marginTop: 2,
-  },
-
-  followUpChip: {
-    alignSelf: 'flex-start',
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  followUpBadge: {
     backgroundColor: colors.lineLight,
     borderRadius: radius.xs,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    marginTop: spacing.xs,
+    paddingVertical: 3,
   },
-  followUpChipUrgent: { backgroundColor: colors.abnormalBg, borderWidth: 1, borderColor: colors.abnormalBorder },
+  followUpBadgeUrgent: { backgroundColor: colors.warningLight, borderWidth: 1, borderColor: colors.warningBorder },
   followUpText: { fontSize: 11, fontWeight: '600', color: colors.textSoft },
-  followUpTextUrgent: { color: colors.abnormal },
+  followUpTextUrgent: { color: colors.warning },
+  timeAgo: { fontSize: 12, color: colors.textSoft, fontVariant: ['tabular-nums'] as any },
 
-  rowChevron: { fontSize: 20, color: colors.line, marginLeft: spacing.sm },
-
-  // ── Empty ──
-  empty: { alignItems: 'center', paddingTop: 80, paddingHorizontal: spacing.xxxl },
-  emptyTitle: { ...typography.h4, color: colors.textMid, marginBottom: spacing.sm },
-  emptyBody: { ...typography.bodySmall, textAlign: 'center', lineHeight: 20 },
+  // Empty
+  empty: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 },
+  emptyIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: spacing.sm },
+  emptyBody: { fontSize: 14, color: colors.textSoft, textAlign: 'center', lineHeight: 20 },
+  emptyAction: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    marginTop: spacing.xl,
+    ...shadow.md,
+  },
+  emptyActionText: { color: colors.white, fontWeight: '700', fontSize: 14 },
 })

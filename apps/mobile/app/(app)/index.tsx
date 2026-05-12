@@ -11,7 +11,7 @@ import type { Patient } from '../../src/db/models/Patient'
 import type { Task } from '../../src/db/models/Task'
 import type { LabReport } from '../../src/db/models/LabReport'
 import { Q } from '@nozbe/watermelondb'
-import { colors, typography, spacing, radius, shadow } from '../../src/theme'
+import { colors, spacing, radius, shadow } from '../../src/theme'
 
 function useDashboard() {
   const [patients, setPatients] = useState<Patient[]>([])
@@ -31,7 +31,6 @@ function useDashboard() {
       setPatients(sorted)
       setFollowUpsToday(pts.filter(p => p.followUpDate != null && p.followUpDate <= now).length)
     })
-
     const taskSub = database.get<Task>('tasks').query(Q.where('status', Q.notEq('DONE'))).observe().subscribe(async tasks => {
       setPendingTasks(tasks)
       const now = Date.now()
@@ -40,16 +39,11 @@ function useDashboard() {
         const t = upcoming[0]
         const patient = await database.get<Patient>('patients').find(t.patientId).catch(() => null)
         setNextAlarm({ task: t, patient })
-      } else {
-        setNextAlarm(null)
-      }
+      } else setNextAlarm(null)
     })
-
     const labSub = database.get<LabReport>('lab_reports')
       .query(Q.where('is_abnormal', true), Q.where('reported_at', Q.gte(Date.now() - 24 * 3_600_000)))
-      .observe()
-      .subscribe(labs => setAbnormalLabs(labs.length))
-
+      .observe().subscribe(labs => setAbnormalLabs(labs.length))
     return () => { patSub.unsubscribe(); taskSub.unsubscribe(); labSub.unsubscribe() }
   }, [])
 
@@ -84,9 +78,9 @@ function useCountdown(dueAt: number | null): string {
 
 function greet() {
   const h = new Date().getHours()
-  if (h < 12) return 'Morning'
-  if (h < 18) return 'Afternoon'
-  return 'Evening'
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
 }
 
 export default function DashboardScreen() {
@@ -95,360 +89,345 @@ export default function DashboardScreen() {
   const { locked, unlock, unlocking } = useSessionLock()
   const { patients, admitted, critical, pendingTasks, abnormalLabs, followUpsToday, nextAlarm } = useDashboard()
   const countdown = useCountdown(nextAlarm?.task.dueAt ?? null)
-  const criticalPulse = useRef(new Animated.Value(1)).current
+  const pulse = useRef(new Animated.Value(1)).current
 
   useEffect(() => {
     if (critical === 0) return
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(criticalPulse, { toValue: 1.02, duration: 900, useNativeDriver: true }),
-        Animated.timing(criticalPulse, { toValue: 1, duration: 900, useNativeDriver: true }),
-      ])
-    )
+    const anim = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1.02, duration: 900, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+    ]))
     anim.start()
     return () => anim.stop()
   }, [critical])
 
-  // ── Lock screen ──
   if (locked) {
     return (
       <View style={lock.screen}>
         <StatusBar barStyle="light-content" />
-        <View style={lock.mark}><Text style={lock.markText}>M</Text></View>
+        <View style={lock.logo}><Text style={lock.logoText}>M</Text></View>
         <Text style={lock.title}>MedLog AI</Text>
-        <Text style={lock.sub}>Session locked</Text>
+        <Text style={lock.sub}>Your session has been locked</Text>
         <TouchableOpacity style={lock.btn} onPress={unlock} disabled={unlocking} activeOpacity={0.85}>
-          <Text style={lock.btnText}>{unlocking ? 'Checking…' : 'Unlock with Biometrics'}</Text>
+          <Text style={lock.btnText}>{unlocking ? 'Checking…' : '🔓  Unlock'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={async () => { await useAuthStore.getState().clearAuth(); router.replace('/(auth)/login') }} style={{ paddingVertical: spacing.md }}>
-          <Text style={{ color: colors.textMid, fontSize: 14 }}>Sign out</Text>
+        <TouchableOpacity onPress={async () => { await useAuthStore.getState().clearAuth(); router.replace('/(auth)/login') }}>
+          <Text style={{ color: colors.textSoft, fontSize: 14, paddingVertical: spacing.md }}>Sign out</Text>
         </TouchableOpacity>
       </View>
     )
   }
 
   const firstName = isGuest ? 'Doctor' : (user?.name ?? 'Doctor').replace(/^Dr\.?\s*/i, '').split(' ')[0]
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const activePatients = patients.filter(p => p.status !== 'DISCHARGED')
 
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.ink} />
+    <View style={s.root}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
-      {/* ── Dark top bar ── */}
-      <View style={styles.topBar}>
-        <View>
-          <Text style={styles.greeting}>{greet()}, Dr. {firstName}</Text>
-          <Text style={styles.date}>{today}</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.handoverPill}
-          onPress={() => router.push('/(app)/handover' as any)}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.handoverPillText}>Handover</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-
-        {/* ── Critical alert ── */}
-        {critical > 0 && (
-          <Animated.View style={[styles.criticalCard, { transform: [{ scale: criticalPulse }] }]}>
-            <View style={styles.criticalDot} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.criticalTitle}>
-                {critical} Critical Patient{critical > 1 ? 's' : ''} — Immediate Attention Required
-              </Text>
+      <ScrollView showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
+        {/* ── Teal header (sticky) ── */}
+        <View style={s.header}>
+          <View style={s.headerContent}>
+            <View>
+              <Text style={s.greeting}>{greet()},</Text>
+              <Text style={s.doctorName}>Dr. {firstName}</Text>
             </View>
-            <TouchableOpacity onPress={() => router.push('/(app)/patients')} activeOpacity={0.8}>
-              <Text style={styles.criticalLink}>View →</Text>
+            <TouchableOpacity style={s.handoverBtn} onPress={() => router.push('/(app)/handover' as any)} activeOpacity={0.85}>
+              <Text style={s.handoverBtnText}>⇄  Handover</Text>
             </TouchableOpacity>
-          </Animated.View>
-        )}
-
-        {/* ── Next alarm countdown ── */}
-        {nextAlarm && (
-          <TouchableOpacity style={styles.alarmCard} onPress={() => router.push('/(app)/tasks')} activeOpacity={0.85}>
-            <View style={styles.alarmLeft}>
-              <Text style={styles.alarmCountdown}>{countdown}</Text>
-              <Text style={styles.alarmCountdownLabel}>until</Text>
-            </View>
-            <View style={styles.alarmDivider} />
-            <View style={{ flex: 1, paddingLeft: spacing.lg }}>
-              <Text style={styles.alarmTitle} numberOfLines={1}>{nextAlarm.task.title}</Text>
-              <Text style={styles.alarmPatient}>
-                {nextAlarm.patient?.name ?? `MR# ${nextAlarm.patient?.mrNumber}`}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )}
-
-        {/* ── Stats row ── */}
-        <View style={styles.statsRow}>
-          <StatCell value={admitted} label="Admitted" onPress={() => router.push('/(app)/patients')} />
-          <View style={styles.statDivider} />
-          <StatCell value={critical} label="Critical" valueColor={critical > 0 ? colors.critical : undefined} onPress={() => router.push('/(app)/patients')} />
-          <View style={styles.statDivider} />
-          <StatCell value={pendingTasks.length} label="Tasks" onPress={() => router.push('/(app)/tasks')} />
-          <View style={styles.statDivider} />
-          <StatCell value={abnormalLabs} label="Abn. Labs" valueColor={abnormalLabs > 0 ? colors.abnormal : undefined} onPress={() => router.push('/(app)/notifications')} />
-        </View>
-
-        {/* ── Follow-up banner ── */}
-        {followUpsToday > 0 && (
-          <TouchableOpacity style={styles.followUpBar} onPress={() => router.push('/(app)/notifications')} activeOpacity={0.85}>
-            <Text style={styles.followUpBarText}>
-              {followUpsToday} follow-up{followUpsToday > 1 ? 's' : ''} overdue or due today
-            </Text>
-            <Text style={styles.followUpBarArrow}>→</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* ── Quick actions ── */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Quick Actions</Text>
-          <View style={styles.actionGrid}>
-            <Action label="Add Patient"   onPress={() => router.push('/(app)/patients/new')} />
-            <Action label="Set Alarm"     onPress={() => router.push('/(app)/tasks/new')} />
-            <Action label="Calculators"   onPress={() => router.push('/(app)/calculators' as any)} />
-            <Action label="Handover"      onPress={() => router.push('/(app)/handover' as any)} />
           </View>
         </View>
 
-        {/* ── Ward patients ── */}
-        <View style={styles.section}>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionLabel}>Ward  ({activePatients.length})</Text>
+        <View style={s.body}>
+          {/* ── Critical alert ── */}
+          {critical > 0 && (
+            <Animated.View style={{ transform: [{ scale: pulse }] }}>
+              <TouchableOpacity style={s.criticalBanner} onPress={() => router.push('/(app)/patients')} activeOpacity={0.9}>
+                <View style={s.criticalPulse} />
+                <Text style={s.criticalText}>
+                  {critical} critical patient{critical > 1 ? 's' : ''} — tap to view
+                </Text>
+                <Text style={s.criticalArrow}>›</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
+          {/* ── Next alarm ── */}
+          {nextAlarm && (
+            <TouchableOpacity style={s.alarmCard} onPress={() => router.push('/(app)/tasks')} activeOpacity={0.85}>
+              <View style={s.alarmBadge}>
+                <Text style={s.alarmBadgeText}>ALARM</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.alarmTask} numberOfLines={1}>{nextAlarm.task.title}</Text>
+                <Text style={s.alarmPatient}>{nextAlarm.patient?.name ?? `MR# ${nextAlarm.patient?.mrNumber}`}</Text>
+              </View>
+              <View style={s.alarmCountdownWrap}>
+                <Text style={s.alarmCountdown}>{countdown}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
+          {/* ── Stats ── */}
+          <View style={s.statsCard}>
+            <StatBox value={admitted} label="Admitted" color={colors.success} onPress={() => router.push('/(app)/patients')} />
+            <View style={s.statDiv} />
+            <StatBox value={critical} label="Critical" color={critical > 0 ? colors.critical : colors.textSoft} onPress={() => router.push('/(app)/patients')} />
+            <View style={s.statDiv} />
+            <StatBox value={pendingTasks.length} label="Tasks" color={pendingTasks.length > 0 ? colors.primary : colors.textSoft} onPress={() => router.push('/(app)/tasks')} />
+            <View style={s.statDiv} />
+            <StatBox value={abnormalLabs} label="Abn. Labs" color={abnormalLabs > 0 ? colors.warning : colors.textSoft} onPress={() => router.push('/(app)/notifications')} />
+          </View>
+
+          {/* ── Follow-ups ── */}
+          {followUpsToday > 0 && (
+            <TouchableOpacity style={s.followUpCard} onPress={() => router.push('/(app)/notifications')} activeOpacity={0.85}>
+              <Text style={s.followUpText}>
+                {followUpsToday} follow-up{followUpsToday > 1 ? 's' : ''} due or overdue today
+              </Text>
+              <Text style={s.followUpArrow}>›</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* ── Quick actions ── */}
+          <Text style={s.sectionLabel}>Quick Actions</Text>
+          <View style={s.actionsGrid}>
+            <ActionBtn label="Add Patient"  sub="Register new"   onPress={() => router.push('/(app)/patients/new')} />
+            <ActionBtn label="Set Alarm"    sub="Task reminder"  onPress={() => router.push('/(app)/tasks/new')} />
+            <ActionBtn label="Calculators"  sub="CrCl, CURB-65" onPress={() => router.push('/(app)/calculators' as any)} />
+            <ActionBtn label="Antibiotics"  sub="Dosing guide"   onPress={() => router.push('/(app)/calculators/antibiotics' as any)} />
+          </View>
+
+          {/* ── Ward ── */}
+          <View style={s.sectionHeader}>
+            <Text style={s.sectionLabel}>Ward ({activePatients.length})</Text>
             {activePatients.length > 5 && (
               <TouchableOpacity onPress={() => router.push('/(app)/patients')} activeOpacity={0.7}>
-                <Text style={styles.seeAll}>All patients →</Text>
+                <Text style={s.seeAll}>See all →</Text>
               </TouchableOpacity>
             )}
           </View>
 
           {activePatients.length === 0 ? (
-            <View style={styles.emptyWard}>
-              <Text style={styles.emptyWardTitle}>No active patients</Text>
-              <Text style={styles.emptyWardBody}>Tap Add Patient to get started</Text>
+            <View style={s.emptyWard}>
+              <Text style={s.emptyWardText}>No active patients</Text>
+              <Text style={s.emptyWardSub}>Tap "Add Patient" to get started</Text>
             </View>
           ) : (
-            <View style={styles.wardTable}>
+            <View style={s.wardList}>
               {activePatients.slice(0, 6).map((p, i) => {
                 const isCritical = p.status === 'CRITICAL'
                 return (
                   <TouchableOpacity
                     key={p.id}
-                    style={[styles.wardRow, i > 0 && styles.wardRowBorder, isCritical && styles.wardRowCritical]}
+                    style={[s.wardItem, i > 0 && s.wardItemBorder]}
                     onPress={() => router.push(`/(app)/patients/${p.id}` as any)}
-                    activeOpacity={0.7}
+                    activeOpacity={0.75}
                   >
-                    <View style={[styles.wardStripe, { backgroundColor: isCritical ? colors.critical : colors.stable }]} />
+                    <View style={[s.wardDot, { backgroundColor: isCritical ? colors.critical : colors.success }]} />
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.wardName, isCritical && { color: colors.critical }]} numberOfLines={1}>
+                      <Text style={[s.wardName, isCritical && { color: colors.critical }]} numberOfLines={1}>
                         {p.name ?? `MR# ${p.mrNumber}`}
                       </Text>
-                      <Text style={styles.wardMeta} numberOfLines={1}>
-                        {p.admissionDiagnosis ?? 'No diagnosis recorded'}
-                        {p.wardId ? `  ·  Ward ${p.wardId}` : ''}
-                      </Text>
+                      {p.admissionDiagnosis ? (
+                        <Text style={s.wardDx} numberOfLines={1}>{p.admissionDiagnosis}</Text>
+                      ) : null}
                     </View>
-                    <Text style={[styles.wardStatus, { color: isCritical ? colors.critical : colors.stable }]}>
-                      {isCritical ? 'CRIT' : 'ADM'}
-                    </Text>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[s.wardStatus, { color: isCritical ? colors.critical : colors.success }]}>
+                        {isCritical ? 'CRITICAL' : 'ADMITTED'}
+                      </Text>
+                      {p.wardId ? <Text style={s.wardMeta}>Ward {p.wardId}{p.bedNumber ? ` · ${p.bedNumber}` : ''}</Text> : null}
+                    </View>
                   </TouchableOpacity>
                 )
               })}
             </View>
           )}
         </View>
-
-        <View style={{ height: 32 }} />
       </ScrollView>
     </View>
   )
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
-function StatCell({ value, label, valueColor, onPress }: { value: number; label: string; valueColor?: string; onPress: () => void }) {
+function StatBox({ value, label, color, onPress }: { value: number; label: string; color: string; onPress: () => void }) {
   return (
-    <TouchableOpacity style={sc.cell} onPress={onPress} activeOpacity={0.7}>
-      <Text style={[sc.value, valueColor ? { color: valueColor } : {}]}>{value}</Text>
-      <Text style={sc.label}>{label}</Text>
+    <TouchableOpacity style={sb.wrap} onPress={onPress} activeOpacity={0.7}>
+      <Text style={[sb.value, { color }]}>{value}</Text>
+      <Text style={sb.label}>{label}</Text>
     </TouchableOpacity>
   )
 }
-const sc = StyleSheet.create({
-  cell: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg },
-  value: { ...typography.monoLarge, fontSize: 28, color: colors.text },
-  label: { fontSize: 11, fontWeight: '600', color: colors.textSoft, marginTop: spacing.xs, textAlign: 'center' },
+const sb = StyleSheet.create({
+  wrap: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg },
+  value: { fontSize: 30, fontWeight: '800', letterSpacing: -1, fontVariant: ['tabular-nums'] as any },
+  label: { fontSize: 11, color: colors.textSoft, fontWeight: '600', marginTop: spacing.xs, textAlign: 'center' },
 })
 
-function Action({ label, onPress }: { label: string; onPress: () => void }) {
+function ActionBtn({ label, sub, onPress }: { label: string; sub: string; onPress: () => void }) {
   return (
-    <TouchableOpacity style={ac.btn} onPress={onPress} activeOpacity={0.75}>
-      <Text style={ac.label}>{label}</Text>
+    <TouchableOpacity style={ab.btn} onPress={onPress} activeOpacity={0.8}>
+      <Text style={ab.label}>{label}</Text>
+      <Text style={ab.sub}>{sub}</Text>
     </TouchableOpacity>
   )
 }
-const ac = StyleSheet.create({
+const ab = StyleSheet.create({
   btn: {
     width: '48%',
     backgroundColor: colors.white,
+    borderRadius: radius.md,
+    padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: radius.md,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
+    ...shadow.sm,
   },
-  label: { fontSize: 13, fontWeight: '700', color: colors.text },
+  label: { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 3 },
+  sub: { fontSize: 12, color: colors.textSoft },
 })
 
-// ─── Styles ────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  scroll: { paddingBottom: 40 },
 
-  topBar: {
-    backgroundColor: colors.ink,
+  header: {
+    backgroundColor: colors.primary,
     paddingTop: Platform.OS === 'ios' ? 56 : 36,
     paddingBottom: spacing.xl,
-    paddingHorizontal: spacing.xxl,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
   },
-  greeting: { fontSize: 22, fontWeight: '700', color: colors.white, letterSpacing: -0.3 },
-  date: { fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: spacing.xs },
-  handoverPill: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: spacing.xxl,
+  },
+  greeting: { fontSize: 14, color: 'rgba(255,255,255,0.65)', fontWeight: '500' },
+  doctorName: { fontSize: 24, fontWeight: '800', color: colors.white, letterSpacing: -0.5, marginTop: 2 },
+  handoverBtn: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
     borderRadius: radius.full,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    marginTop: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    marginTop: 6,
   },
-  handoverPillText: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.7)', letterSpacing: 0.2 },
+  handoverBtnText: { fontSize: 13, fontWeight: '700', color: colors.white },
 
-  // ── Critical ──
-  criticalCard: {
+  body: { padding: spacing.lg, paddingBottom: 32, marginTop: -spacing.lg },
+
+  // Critical
+  criticalBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.criticalBg,
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.xl,
     borderRadius: radius.md,
     padding: spacing.lg,
-    borderWidth: 1,
+    marginBottom: spacing.md,
+    borderWidth: 1.5,
     borderColor: colors.criticalBorder,
     gap: spacing.md,
+    ...shadow.sm,
   },
-  criticalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.critical, flexShrink: 0 },
-  criticalTitle: { fontSize: 13, fontWeight: '700', color: colors.critical, lineHeight: 18 },
-  criticalLink: { fontSize: 13, fontWeight: '700', color: colors.critical },
+  criticalPulse: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.critical },
+  criticalText: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.critical },
+  criticalArrow: { fontSize: 20, color: colors.critical, fontWeight: '700' },
 
-  // ── Alarm ──
+  // Alarm
   alarmCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.ink,
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.md,
-    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
     padding: spacing.lg,
+    marginBottom: spacing.md,
+    gap: spacing.md,
+    ...shadow.md,
   },
-  alarmLeft: { alignItems: 'center', minWidth: 56 },
-  alarmCountdown: { fontSize: 22, fontWeight: '800', color: '#A78BFA', fontVariant: ['tabular-nums'] as any, letterSpacing: -0.5 },
-  alarmCountdownLabel: { fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: '600', textTransform: 'uppercase', marginTop: 2 },
-  alarmDivider: { width: StyleSheet.hairlineWidth, height: 36, backgroundColor: 'rgba(255,255,255,0.12)', marginLeft: spacing.md },
-  alarmTitle: { fontSize: 14, fontWeight: '700', color: colors.white, marginBottom: 2 },
-  alarmPatient: { fontSize: 12, color: 'rgba(255,255,255,0.45)' },
+  alarmBadge: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: radius.xs, paddingHorizontal: spacing.sm, paddingVertical: 3 },
+  alarmBadgeText: { fontSize: 9, fontWeight: '800', color: colors.white, letterSpacing: 1 },
+  alarmTask: { fontSize: 15, fontWeight: '700', color: colors.white, marginBottom: 2 },
+  alarmPatient: { fontSize: 12, color: 'rgba(255,255,255,0.6)' },
+  alarmCountdownWrap: { alignItems: 'center', minWidth: 48 },
+  alarmCountdown: { fontSize: 24, fontWeight: '800', color: '#a78bfa', fontVariant: ['tabular-nums'] as any, letterSpacing: -0.5 },
 
-  // ── Stats ──
-  statsRow: {
+  // Stats
+  statsCard: {
     flexDirection: 'row',
     backgroundColor: colors.white,
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
+    marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: colors.line,
     overflow: 'hidden',
+    ...shadow.sm,
   },
-  statDivider: { width: StyleSheet.hairlineWidth, backgroundColor: colors.line },
+  statDiv: { width: StyleSheet.hairlineWidth, backgroundColor: colors.line },
 
-  // ── Follow-up ──
-  followUpBar: {
+  // Follow-up
+  followUpCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.abnormalBg,
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.md,
+    backgroundColor: colors.warningLight,
     borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.abnormalBorder,
-  },
-  followUpBarText: { fontSize: 13, fontWeight: '600', color: colors.abnormal },
-  followUpBarArrow: { fontSize: 16, color: colors.abnormal, fontWeight: '700' },
-
-  // ── Sections ──
-  section: { marginTop: spacing.xl, paddingHorizontal: spacing.xl },
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textSoft,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.warningBorder,
   },
-  seeAll: { fontSize: 13, fontWeight: '600', color: colors.primary },
+  followUpText: { fontSize: 13, fontWeight: '600', color: colors.warning },
+  followUpArrow: { fontSize: 18, color: colors.warning, fontWeight: '700' },
 
-  actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  // Sections
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: colors.textSoft, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: spacing.md, marginTop: spacing.md },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.md },
+  seeAll: { fontSize: 13, fontWeight: '600', color: colors.primary, marginBottom: spacing.md },
 
-  // ── Ward table ──
-  wardTable: {
+  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
+
+  // Ward list
+  wardList: {
     backgroundColor: colors.white,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.line,
     overflow: 'hidden',
+    ...shadow.sm,
   },
-  wardRow: {
+  wardItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
     paddingVertical: spacing.md,
-    paddingRight: spacing.lg,
-    backgroundColor: colors.white,
+    paddingHorizontal: spacing.lg,
   },
-  wardRowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  wardRowCritical: { backgroundColor: '#FFFAFA' },
-  wardStripe: { width: 3, alignSelf: 'stretch', marginRight: spacing.md, marginLeft: spacing.lg },
-  wardName: { fontSize: 14, fontWeight: '700', color: colors.text },
-  wardMeta: { fontSize: 12, color: colors.textSoft, marginTop: 2 },
-  wardStatus: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5, marginLeft: spacing.md },
+  wardItemBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  wardDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+  wardName: { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 2 },
+  wardDx: { fontSize: 12, color: colors.textSoft },
+  wardStatus: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5, marginBottom: 2 },
+  wardMeta: { fontSize: 11, color: colors.textSoft },
 
   emptyWard: {
     backgroundColor: colors.white,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.line,
     padding: spacing.xxxl,
     alignItems: 'center',
   },
-  emptyWardTitle: { ...typography.h4, color: colors.textMid, marginBottom: spacing.xs },
-  emptyWardBody: { ...typography.bodySmall, textAlign: 'center' },
+  emptyWardText: { fontSize: 15, fontWeight: '600', color: colors.textMid, marginBottom: spacing.xs },
+  emptyWardSub: { fontSize: 13, color: colors.textSoft },
 })
 
 const lock = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#0A0F1E', justifyContent: 'center', alignItems: 'center', padding: spacing.xxxl },
-  mark: { width: 56, height: 56, borderRadius: radius.md, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
-  markText: { fontSize: 26, fontWeight: '800', color: colors.white },
+  screen: { flex: 1, backgroundColor: '#0A2F2B', justifyContent: 'center', alignItems: 'center', padding: spacing.xxxl },
+  logo: { width: 60, height: 60, borderRadius: radius.md, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xl },
+  logoText: { fontSize: 28, fontWeight: '800', color: colors.white },
   title: { fontSize: 22, fontWeight: '700', color: colors.white, marginBottom: spacing.xs },
-  sub: { fontSize: 14, color: colors.textSoft, marginBottom: 48 },
-  btn: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 14, paddingHorizontal: 36, marginBottom: spacing.lg },
+  sub: { fontSize: 14, color: 'rgba(255,255,255,0.4)', marginBottom: 48 },
+  btn: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 14, paddingHorizontal: 36, marginBottom: spacing.lg, ...shadow.md },
   btnText: { color: colors.white, fontSize: 15, fontWeight: '700' },
 })
