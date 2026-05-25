@@ -1,6 +1,7 @@
 {
   "extends": "@medlog/tsconfig/react-library.json",
   "compilerOptions": {
+    "types": ["vite/client"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],

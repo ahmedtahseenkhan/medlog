@@ -1,10 +1,11 @@
+import { type ComponentType } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/auth'
 import { LayoutDashboard, Users, LogOut, Activity, BarChart2, ShieldCheck, Settings, GitMerge, FileText, Calendar } from 'lucide-react'
 import clsx from 'clsx'
 import NotificationBell from './notifications/NotificationBell'
 
-type NavItem = { to: string; label: string; icon: React.ComponentType<{ className?: string }>; end?: boolean }
+type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string }>; end?: boolean }
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
