@@ -201,7 +201,7 @@ const vc = StyleSheet.create({
   normal: { fontSize: 10, color: colors.gray400, fontWeight: '500' },
   input: { fontSize: 28, fontWeight: '800', color: colors.gray900, textAlign: 'center', width: '100%', paddingVertical: spacing.xs },
   inputCritical: { color: colors.danger },
-  label: { fontSize: 12, fontWeight: '700', color: colors.gray600 ?? colors.gray500, marginTop: 2 },
+  label: { fontSize: 12, fontWeight: '700', color: colors.textMid, marginTop: 2 },
   unit: { fontSize: 11, color: colors.gray400 },
 })
 

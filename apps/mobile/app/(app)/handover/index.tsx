@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
   patientNumText: { fontSize: 13, fontWeight: '800', color: colors.white },
   patientName: { fontSize: 16, fontWeight: '800', color: colors.gray900 },
   patientMeta: { fontSize: 11, color: colors.gray500, fontWeight: '500' },
-  patientDx: { fontSize: 13, color: colors.gray600 ?? colors.gray500, marginTop: 3, fontStyle: 'italic' },
+  patientDx: { fontSize: 13, color: colors.textMid, marginTop: 3, fontStyle: 'italic' },
   criticalTag: { backgroundColor: colors.dangerLight, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   criticalTagText: { fontSize: 10, fontWeight: '800', color: colors.danger },
   viewBtn: { fontSize: 13, fontWeight: '600', color: colors.primary },
@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
   taskRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.sm },
   taskPriority: { width: 24, height: 24, borderRadius: radius.full, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   taskPriorityText: { fontSize: 11, fontWeight: '800' },
-  taskTitle: { fontSize: 14, color: colors.gray800 ?? colors.gray700, fontWeight: '500' },
+  taskTitle: { fontSize: 14, color: colors.text, fontWeight: '500' },
   taskDue: { fontSize: 12, color: colors.gray400, marginTop: 1 },
 
   followUpRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },

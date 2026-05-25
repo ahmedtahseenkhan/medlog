@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
   patientItem: { flexDirection: 'row', alignItems: 'center', padding: spacing.lg, gap: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.gray100 },
   patientItemSelected: { backgroundColor: colors.primaryLight },
   patientItemAvatar: { width: 36, height: 36, borderRadius: radius.full, backgroundColor: colors.gray200, alignItems: 'center', justifyContent: 'center' },
-  patientItemAvatarText: { fontSize: 14, fontWeight: '700', color: colors.gray600 ?? colors.gray500 },
+  patientItemAvatarText: { fontSize: 14, fontWeight: '700', color: colors.textMid },
   patientItemName: { fontSize: 14, fontWeight: '700', color: colors.gray900 },
   patientItemMR: { fontSize: 12, color: colors.gray500 },
   patientItemDx: { fontSize: 12, color: colors.gray400, marginTop: 1 },

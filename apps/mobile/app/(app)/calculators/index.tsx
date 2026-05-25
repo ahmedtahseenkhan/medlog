@@ -42,7 +42,7 @@ export default function CalcScreen() {
         {/* Grid of calculators */}
         {activeCalc === null && (
           <>
-            <Text style={styles.tip}>Tap any calculator to open it. Results are for clinical guidance only.</Text>
+            <Text style={styles.tip}>Results are for clinical guidance only — verify with clinical judgment.</Text>
             <View style={styles.grid}>
               {CALCS.map(c => (
                 <TouchableOpacity
@@ -51,7 +51,9 @@ export default function CalcScreen() {
                   onPress={() => c.id === 'antibiotics' ? router.push('/(app)/calculators/antibiotics' as any) : setActiveCalc(c.id as CalcId)}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.calcIcon}>{c.icon}</Text>
+                  <View style={styles.calcIconCircle}>
+                    <Text style={styles.calcIcon}>{c.icon}</Text>
+                  </View>
                   <Text style={styles.calcTitle}>{c.title}</Text>
                   <Text style={styles.calcSub}>{c.subtitle}</Text>
                 </TouchableOpacity>
@@ -534,12 +536,18 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   calcCard: {
     width: '47%', backgroundColor: colors.white, borderRadius: radius.lg,
-    padding: spacing.lg, alignItems: 'flex-start', ...shadow.sm,
-    borderWidth: 1, borderColor: colors.gray200,
+    padding: spacing.lg, alignItems: 'flex-start', ...shadow.md,
+    borderWidth: 1.5, borderColor: colors.line,
   },
-  calcIcon: { fontSize: 26, marginBottom: spacing.sm },
-  calcTitle: { fontSize: 16, fontWeight: '800', color: colors.gray900, marginBottom: 2 },
-  calcSub: { fontSize: 11, color: colors.gray500, lineHeight: 16 },
+  calcIconCircle: {
+    width: 48, height: 48, borderRadius: radius.md,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  calcIcon: { fontSize: 24 },
+  calcTitle: { fontSize: 14, fontWeight: '800', color: colors.text, marginBottom: 3, letterSpacing: -0.2 },
+  calcSub: { fontSize: 11, color: colors.textSoft, lineHeight: 16 },
 
   calcForm: { backgroundColor: colors.screenBg },
   formula: { fontSize: 12, color: colors.gray500, fontStyle: 'italic', marginBottom: spacing.xl, backgroundColor: colors.gray100, padding: spacing.md, borderRadius: radius.md },
