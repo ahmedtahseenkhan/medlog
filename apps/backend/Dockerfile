@@ -6,6 +6,7 @@ COPY package*.json ./
 COPY packages/types/package.json ./packages/types/
 COPY packages/tsconfig/package.json ./packages/tsconfig/
 COPY apps/backend/package.json ./apps/backend/
+COPY scripts ./scripts
 
 # Install all dependencies from monorepo root
 RUN npm ci --workspace=apps/backend --include-workspace-root
@@ -28,6 +29,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 COPY packages/types/package.json ./packages/types/
 COPY apps/backend/package.json ./apps/backend/
+COPY scripts ./scripts
 
 RUN npm ci --workspace=apps/backend --include-workspace-root --omit=dev
 
