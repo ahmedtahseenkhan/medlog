@@ -30,6 +30,9 @@
     "trailingComma": "es5",
     "printWidth": 100
   },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.60.2"
+  },
   "overrides": {
     "react": "19.1.0",
     "react-dom": "19.1.0"
