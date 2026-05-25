@@ -34,7 +34,7 @@ export function PatientTimeline({ patientId }: { patientId: string }) {
   const entries: TimelineEntry[] = [
     ...(notesData?.data ?? []).map((d) => ({ kind: 'note' as const, date: d.createdAt, data: d })),
     ...(tasksData?.data ?? []).map((d) => ({ kind: 'task' as const, date: d.createdAt, data: d })),
-    ...(labsData?.data ?? []).map((d) => ({ kind: 'lab' as const, date: d.createdAt, data: d })),
+    ...(labsData?.data ?? []).map((d) => ({ kind: 'lab' as const, date: d.reportedAt, data: d })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   if (!entries.length) {

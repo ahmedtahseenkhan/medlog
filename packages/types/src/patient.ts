@@ -12,6 +12,7 @@ export interface Patient {
   dischargeSummary?: string
   createdBy: string
   teamId?: string
+  contactPrefs?: { channel?: string; notes?: string } | null
   createdAt: string
   updatedAt: string
 }

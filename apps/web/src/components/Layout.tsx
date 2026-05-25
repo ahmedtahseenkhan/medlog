@@ -4,7 +4,9 @@ import { LayoutDashboard, Users, LogOut, Activity, BarChart2, ShieldCheck, Setti
 import clsx from 'clsx'
 import NotificationBell from './notifications/NotificationBell'
 
-const NAV_ITEMS = [
+type NavItem = { to: string; label: string; icon: React.ComponentType<{ className?: string }>; end?: boolean }
+
+const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/patients', label: 'Patients', icon: Users },
   { to: '/analytics', label: 'Analytics', icon: BarChart2 },
@@ -13,7 +15,7 @@ const NAV_ITEMS = [
   { to: '/appointments', label: 'Appointments', icon: Calendar },
 ]
 
-const ADMIN_NAV = [
+const ADMIN_NAV: NavItem[] = [
   { to: '/audit-log', label: 'Audit log', icon: ShieldCheck },
 ]
 
